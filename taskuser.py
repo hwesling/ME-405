@@ -1,4 +1,3 @@
-""" MECHA 15 TRIN"""
 import sys
 
 help_menu =  (
