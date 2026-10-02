@@ -32,6 +32,9 @@ l_done = Cell(False)
 r_done = Cell(False)        
 l_data = array('f', [0]*(n_samples*4))
 r_data = array('f', [0]*(n_samples*4))
+effort = []
+l_effort = []
+r_effort = []
  
  
 # TaskMotor and TaskUser class Objects
@@ -64,8 +67,6 @@ def main():
         
         #print(cotask.task_list.profile())
        
-
- 
  
         
  

@@ -1,11 +1,14 @@
 """ MECHA 15 TRIN"""
 import sys
+from pyb import USB_VCP, UART
+
 
 help_menu =  (
     "+------------------------------------------------------------------------------+",
     "| ME 4305 Romi Tuning Interface Help Menu                                      |",
     "+-----+------------------------------------------------------------------------+",
     "| h/H | Print help menu                                                        |",
+    "| d/D | Enter the duty cycle for the next open-loop test                       |",
     "| l/L | Trigger step response sequence on left motor and print results         |",
     "| r/R | Trigger step response sequence on right motor and print results        |",
     "| e/E | Exit program                                                           |",
@@ -22,6 +25,8 @@ S2_PRINT_HELP = 2
 S3_LEFT_MOT = 3
 S4_RIGHT_MOT = 4
 S5_PRINT_RESULTS = 5
+S6_DUTY_CYCLE = 6
+
 
 
 
@@ -35,11 +40,23 @@ class TaskUser:
         self.r_done = r_done
         self.l_data = l_data
         self.r_data = r_data
+        self.value = 0
+        self.char_buf = []
+        self.duty_cycle = 0.0
+
+        self.digits = set(map(str, range(10)))
+        self.term = {"\r", "\n"}
+
      
         self.vcp = vcp
         self.help_idx = 0
         self.active = None
         self.row = 0
+
+    #def multichar_input(self, ser): implament week 7
+
+        #yield from ....
+
 
 
     def run(self):
@@ -76,6 +93,13 @@ class TaskUser:
                         self.row = 0
                         self.r_go.value = True
                         state = 4
+
+                    elif char_in in {"D", "d"}:
+                        self.char_buf = []
+                        print("Enter duty cycle [%], then press Enter:")
+
+
+                        state = 6
 
                     elif char_in in {"E", "e"}:
                         raise KeyboardInterrupt
@@ -120,10 +144,47 @@ class TaskUser:
                         d = self.active
                         print("{},{},{},{}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
                         self.row +=1
-
-
                 if self.row >= rows:
                     state = 1
+
+            elif state == 6:
+                if self.vcp.any():
+                    char_in = self.vcp.read(1).decode()
+
+                    if char_in in self.digits:
+                        self.vcp.write(char_in)
+                        self.char_buf.append(char_in)
+    
+                    elif char_in == "-" and len(self.char_buf) == 0:
+                        self.vcp.write(char_in)
+                        self.char_buf.append(char_in)
+    
+                    elif char_in == "\x7f" and len(self.char_buf) >0:
+                        self.vcp.write(char_in)
+                        self.char_buf.pop()
+    
+                    elif char_in in self.term:
+    
+                        if len(self.char_buf) == 0:
+                            print ("No duty cycle entered. Returning to main menu")
+                            self.char_buf = []
+                            state = 1
+    
+                        elif self.char_buf != ["-"]:
+                            print()
+                            self.duty_cycle = float("".join(self.char_buf))
+                            print("Duty cycle set to {}%".format(self.duty_cycle))
+                            self.char_buf = []
+                            self.help.idx = 0
+                            state = 2
+    
+                    elif (char_in == "." and len(self.char_buf) > 0 and self.char_buf != ["-"] and "." not in self.char_buf):
+                        self.vcp.write(char_in)
+                        self.char_buf.append(char_in)
+               
+
+                else:
+                    pass
 
 
             yield state
