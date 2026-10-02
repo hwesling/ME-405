@@ -1,5 +1,3 @@
-""" MECHA 15 TRIN"""
- 
 from time import ticks_diff, ticks_us
  
 S0_INIT = 0
