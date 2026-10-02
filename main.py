@@ -1,42 +1,48 @@
-from pyb import Pin, Timer, USB_VCP
-from time import ticks_diff, ticks_add, ticks_us
-from motor import MotorDriver
-from encoder import Encoder
-from taskmotor_gen import TaskMotor
-from taskuser import TaskUser
-import cotask
-from array import array
- 
- 
+""" MECHA 15 - Harry """
+""" main file for Romi that implements a priority scheduler to cooperatively multitask """
+
+# Imports
+import cotask  # type: ignore
+from pyb       import Pin, Timer, USB_VCP, UART # type: ignore
+from time      import ticks_diff, ticks_add, ticks_us
+from motor     import MotorDriver
+from encoder   import Encoder
+from taskmotor import TaskMotor
+from taskuser  import TaskUser
+from array     import array
+
+# The Cell class allows Bools of the class to be used across tasks 
 class Cell:
     def __init__(self, value = None):
         self.value = value
  
 ser = USB_VCP()
  
- 
-trial_set =  [33]
-n_samples = 101*len(trial_set)
+effort =  [33]
+n_samples = 101*len(effort)
  
 pwm_tim = Timer(2, freq=20_000)
- 
+
+# MotorDriver and Encoder class objects 
 right_mot = MotorDriver(Pin.cpu.A0, Pin.cpu.C8, Pin.cpu.C9, pwm_tim, 1)
 left_mot = MotorDriver(Pin.cpu.A1, Pin.cpu.B8, Pin.cpu.B9, pwm_tim, 2)
  
 right_enc = Encoder(3, 1, 2, Pin.cpu.B4, Pin.cpu.B5, sign = -1)
 left_enc = Encoder(4, 1, 2, Pin.cpu.B6, Pin.cpu.B7)
- 
+
+# Intertask Variables 
 l_go = Cell(False)          
 r_go = Cell(False)          
 l_done = Cell(False)        
 r_done = Cell(False)        
 l_data = array('f', [0]*(n_samples*4))
 r_data = array('f', [0]*(n_samples*4))
+l_effort = array()
+r_effort = array() 
  
- 
-# TaskMotor and TaskUser class Objects
-left_mot_task = TaskMotor(left_enc, left_mot, trial_set, "left", l_go, l_done, l_data)
-right_mot_task = TaskMotor(right_enc, right_mot, trial_set, "right", r_go, r_done, r_data)
+# TaskMotor and TaskUser class objects
+left_mot_task = TaskMotor(left_enc, left_mot, effort, "left", l_go, l_done, l_data)
+right_mot_task = TaskMotor(right_enc, right_mot, effort, "right", r_go, r_done, r_data)
 user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser) 
  
  
