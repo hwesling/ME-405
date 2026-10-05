@@ -18,15 +18,15 @@ class Cell:
  
 ser = USB_VCP()
  
-effort =  [33]
-n_samples = 101*len(effort)
+effort =  Cell(0)
+n_samples = 101
  
 pwm_tim = Timer(2, freq=20_000)
 
 # MotorDriver and Encoder class objects 
 right_mot = MotorDriver(Pin.cpu.A0, Pin.cpu.C8, Pin.cpu.C9, pwm_tim, 1)
 left_mot = MotorDriver(Pin.cpu.A1, Pin.cpu.B8, Pin.cpu.B9, pwm_tim, 2)
- 
+
 right_enc = Encoder(3, 1, 2, Pin.cpu.B4, Pin.cpu.B5, sign = -1)
 left_enc = Encoder(4, 1, 2, Pin.cpu.B6, Pin.cpu.B7)
 
@@ -36,14 +36,12 @@ r_go = Cell(False)
 l_done = Cell(False)        
 r_done = Cell(False)        
 l_data = array('f', [0]*(n_samples*4))
-r_data = array('f', [0]*(n_samples*4))
-l_effort = array()
-r_effort = array() 
+r_data = array('f', [0]*(n_samples*4)) 
  
 # TaskMotor and TaskUser class objects
-left_mot_task = TaskMotor(left_enc, left_mot, effort, "left", l_go, l_done, l_data)
-right_mot_task = TaskMotor(right_enc, right_mot, effort, "right", r_go, r_done, r_data)
-user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser) 
+left_mot_task = TaskMotor(left_enc, left_mot, "left", l_go, l_done, l_data, effort)
+right_mot_task = TaskMotor(right_enc, right_mot, "right", r_go, r_done, r_data, effort)
+user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, effort) 
  
  
 def main():
