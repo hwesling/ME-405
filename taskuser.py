@@ -30,7 +30,7 @@ S6_DUTY_CYCLE_INPUT = 6
 
 
 class TaskUser:
-    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp):
+    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, effort):
 
         self.l_go = l_go
         self.r_go = r_go
@@ -38,23 +38,28 @@ class TaskUser:
         self.r_done = r_done
         self.l_data = l_data
         self.r_data = r_data
+        self.effort = effort
      
         self.vcp = vcp
         self.help_idx = 0
-        self.active = None
+        self.active_data = None
+        self.active_done = None
+        self.active_mot = None
+        self.active_effort = 0
+        self.header = False
         self.row = 0
         self.ser = USB_VCP()
-        self.max_val = 0
 
 
     def run(self):
         state = 0
 
         while True:
+
             if  state == 0:
                 for _ in range(16):
                    if self.vcp.any():
-                       self.vcp.read(1)
+                      self.vcp.read(1)
                 self.help_idx = 0  
                 state = 2
 
@@ -62,6 +67,7 @@ class TaskUser:
 
             elif state == 1:
                 print(">: ")
+
                 if self.vcp.any():
                     char_in = self.vcp.read(1).decode()
 
@@ -71,26 +77,31 @@ class TaskUser:
 
                     elif char_in in {"D", 'd'}:
                         print("Enter Duty Cycle [%]:")
-                        value: int = 0
+                        value: float = self.effort.value
                         char_buf: list = []
                         digits: set = set(map(str, range(10)))
                         term: set = {"\r", "\n"}
                         done = False
-                        self.max_val = range(-100,100)
                         state = 6
                     
                     elif char_in in {"L", "l"}:
                         print("Left Motor Start")
-                        self.active = self.l_data
+                        self.active_data = self.l_data
                         self.active_done = self.l_done
+                        self.active_mot = "left"
+                        self.active_effort = self.effort.value
+                        self.header = False
                         self.row = 0
                         self.l_go.value = True
                         state = 3
                     
                     elif char_in in {"R", "r"}:
                         print("Right Motor Start")
-                        self.active = self.r_data
+                        self.active_data = self.r_data
                         self.active_done = self.r_done
+                        self.active_mot = "right"
+                        self.active_effort = self.effort.value
+                        self.header = False
                         self.row = 0
                         self.r_go.value = True
                         state = 4
@@ -130,20 +141,30 @@ class TaskUser:
                 for _ in range(16):
                     if self.vcp.any():
                         self.vcp.read(1)
-                rows = len(self.active) // 4
+                rows = len(self.active_data) // 4
+
+                if not self.header:
+                    print("STARTING OPEN-LOOP RESPONSE")
+                    print(f"Motor: {self.active_mot}    Duty Cycle [%]: {self.active_effort}")
+                    print("Duty Cycle [%], time [us], Position [ticks], Velocity [ticks/s]")
+                    self.header = True
 
                 for _ in range(ROWS_PER_PASS):
                     if self.row < rows:
                         i = self.row*4
-                        d = self.active
+                        d = self.active_data
                         print("{},{},{},{}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
                         self.row +=1
 
                     if self.row >= rows:
+                        print("OPEN-LOOP RESPONSE COMPLETE")
                         state = 1
+                        break
 
-            elif state == 6:                           # DC Input State --> only listed as S6 to maintain existing FSM logic,
-                                                       # state 5 (print) kicks back to main/taskmotor, should be a generator for reusability later (as of 10/1/26)
+            elif state == 6:                           # Duty Cycle Input State --> only listed as S6 to maintain existing FSM logic,
+                                                       # state 5 (print) kicks back to main/taskmotor, S6 should be a generator for reusability later (as of 10/1/26)
+                if not done:
+
                     if self.ser.any():
                         char_in = self.ser.read(1).decode()
                         
@@ -167,16 +188,32 @@ class TaskUser:
                         # as the end of data entry.
                         elif char_in in term:
                             
-                            if len(char_buf) == 0:
-                                self.ser.write("\r\n")
+                            if len(char_buf) == 0:                                                     # Might need "or abs(float("".join(char_buf))) > 100" in this for kicking out bad vals
+                                self.ser.write("\r\n")                                                 
                                 self.ser.write("Value not changed\r\n")
                                 char_buf = []
+                                done = True
                                 
-                            elif char_buf != ["-"]:
+                            elif "".join(char_buf) in {"-", ".", "-."}:
+                                  self.ser.write("\r\n")
+                                  self.ser.write("Invalid input\r\n")
+                                  char_buf = []
+                                  done = True                            
+
+                            elif abs(float("".join(char_buf))) > 100:                                  # Might need to remove this line (see comment above)
+                                self.ser.write("\r\n")                                                 # Will need to be adjusted when controller gain is implemented
+                                self.ser.write("Value outside of allowable range\r\n")
+                                char_buf = []
+                                done = True    
+                                
+                            else:
                                 self.ser.write("\r\n")
                                 value = float("".join(char_buf))
+                                self.effort.value = value
                                 self.ser.write(f"Value set to {value}\r\n")
                                 char_buf = []
-
+                                done = True
+                else:
+                    state = 1                
 
             yield state
