@@ -24,9 +24,7 @@ PRETEST = (
     ("left", 33.0),
     ("right", 33.0),
 )
-
 NUMERIC_LINE_ENDING = "\r\n"
-
 
 # The firmware should print this marker on its own line after the last data row.
 # Using an explicit marker is more reliable than assuming that a quiet serial
@@ -50,9 +48,6 @@ HEADERS = ["Duty Cycle [%]",
 FIRST_RESPONSE_TIMEOUT = 30.0
 BETWEEN_LINES_TIMEOUT = 5.0
 ACK_TIMEOUT = 5.0
-
-# The run name becomes part of each output filename. Students may replace this
-# with a motor name, duty cycle, or another useful test identifier.
 
 OUTPUT_DIR = Path(r"C:\Users\hwesl\OneDrive - Cal Poly\ME 405 LAB\Lab 4\romi_open_loop_results")
 
@@ -131,20 +126,19 @@ def send_duty_cycle(ser, duty_cycle):
 
 
 def collect_dataset(ser):
-    """Read one headed numeric dataset, starting at START_MARKER and ending at END_MARKER.
+    """Read one numeric dataset between START_MARKER and END_MARKER.
 
-    Status and prompt lines before the CSV header are displayed and ignored.
-    After the header is found, malformed rows are reported and skipped rather
-    than terminating the whole collection.
+    Status and prompt lines before START_MARKER are displayed and ignored.
+    After START_MARKER is found, numeric rows with the expected four fields are
+    collected. Other status text is ignored.
     """
     headers = HEADERS
     columns = []
-    for header in HEADERS:
+    for header in headers:
         columns.append([])
 
     in_dataset = False
     serial_line_number = 0
-
     # Save one reading from the monotonic clock. Later readings are compared
     # with this one to determine how many seconds have elapsed.
     waiting_since = monotonic()
@@ -159,7 +153,7 @@ def collect_dataset(ser):
                        else BETWEEN_LINES_TIMEOUT)
             if monotonic() - waiting_since >= timeout:
                 if not in_dataset:
-                    raise TimeoutError("No CSV header was received.")
+                    raise TimeoutError("No dataset start marker was received.")
                 raise TimeoutError("Serial data stopped before the end marker.")
             continue
 
