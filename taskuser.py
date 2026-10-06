@@ -32,7 +32,7 @@ S6_DUTY_CYCLE = 6
 
 
 class TaskUser:
-    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp):
+    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, effort):
 
         self.l_go = l_go
         self.r_go = r_go
@@ -40,18 +40,19 @@ class TaskUser:
         self.r_done = r_done
         self.l_data = l_data
         self.r_data = r_data
-        self.value = 0
-        self.char_buf = []
-        self.duty_cycle = 0.0
-
-        self.digits = set(map(str, range(10)))
-        self.term = {"\r", "\n"}
-
+        self.effort = effort
+      
      
         self.vcp = vcp
         self.help_idx = 0
-        self.active = None
+        self.active_data = None
+        self.active_done = None
+        self.active_mot = None
+        self.active_effort = 0
+        self.header = False
         self.row = 0
+        
+        
 
     #def multichar_input(self, ser): implament week 7
 
@@ -73,6 +74,8 @@ class TaskUser:
 
 
             elif state == 1:
+                print(">:")
+                
                 if self.vcp.any():
                     char_in = self.vcp.read(1).decode()
 
@@ -83,6 +86,9 @@ class TaskUser:
                     elif char_in in {"L", "l"}:
                         self.active = self.l_data
                         self.active_done = self.l_done
+                        self.active_mot = "left"
+                        self.active_effort = self.effort.value
+                        self.header = False
                         self.row = 0
                         self.l_go.value = True
                         state = 3
@@ -90,14 +96,21 @@ class TaskUser:
                     elif char_in in {"R", "r"}:
                         self.active = self.r_data
                         self.active_done = self.r_done
+                        self.active_mot = "right"
+                        self.active_effort = self.effort.value
+                        self.header = False
                         self.row = 0
                         self.r_go.value = True
                         state = 4
 
                     elif char_in in {"D", "d"}:
-                        self.char_buf = []
                         print("Enter duty cycle [%], then press Enter:")
-
+                        value: float = self.effort.value
+                        char_buf: list []
+                        digits: set = set(map(str, range(10)))
+                        term: set = {\r", "\n"}
+                        done = False
+              
 
                         state = 6
 
@@ -138,16 +151,28 @@ class TaskUser:
                         self.vcp.read(1)
                 rows = len(self.active) // 4
 
+                if not self.header:
+                    print("STARTING OPEN-LOOP RESPONSE")
+                    print(F"MOTOR: {self.active_mot}    Duty Cycle [$]: {se;f.active_effort}")
+                    print("Duty cycle [%], time [us], Position [ticks], Velocity [ticks/s]")
+                    self.header = True
+
                 for _ in range(ROWS_PER_PASS):
                     if self.row < rows:
                         i = self.row*4
                         d = self.active
                         print("{},{},{},{}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
                         self.row +=1
+                        
                 if self.row >= rows:
+                    print("OPEN-LOOP RESPONSE COMPLETE")
                     state = 1
+                    break
 
             elif state == 6:
+
+    
+                    
                 if self.vcp.any():
                     char_in = self.vcp.read(1).decode()
 
