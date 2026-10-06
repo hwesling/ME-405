@@ -40,7 +40,7 @@ r_effort = []
 # TaskMotor and TaskUser class Objects
 left_mot_task = TaskMotor(left_enc, left_mot, trial_set, "left", l_go, l_done, l_data)
 right_mot_task = TaskMotor(right_enc, right_mot, trial_set, "right", r_go, r_done, r_data)
-user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser) 
+user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, effort) 
  
  
 def main():
