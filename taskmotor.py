@@ -48,6 +48,7 @@ class TaskMotor:
     
             elif self.state == 1:
                 i = self.collect*4
+                self.enc.update()
                 self.data[i] = self.test_effort
                 self.data[i + 1] = ticks_diff(ticks_us(), self.trial_start)
                 self.data[i + 2] = self.enc.get_position()

@@ -66,7 +66,6 @@ class TaskUser:
 
 
             elif state == 1:
-                print(">: ")
 
                 if self.vcp.any():
                     char_in = self.vcp.read(1).decode()
@@ -153,7 +152,7 @@ class TaskUser:
                     if self.row < rows:
                         i = self.row*4
                         d = self.active_data
-                        print("{},{},{},{}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
+                        print("{},          {},          {},          {}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
                         self.row +=1
 
                     if self.row >= rows:

@@ -38,6 +38,11 @@ HEADERS = ["Duty Cycle [%]",
            "Position [ticks]", 
            "Velocity [ticks/s]"]
 
+# Plot labels used for the saved deliverable figures.
+POSITION_LABEL = "Position [ticks]"
+VELOCITY_LABEL = "Velocity [ticks/s]"
+TIME_LABEL = "Time [s]"
+
 # Stop waiting and report an error instead of hanging forever if the firmware
 # does not respond or stops transmitting partway through a dataset.
 #
@@ -195,37 +200,52 @@ def collect_dataset(ser):
     return headers, columns
 
 
-def save_csv(filename, headers, columns):
-    """Save the collected columns using the received header labels."""
+def save_csv(filename, headers, columns, motor_name, duty_cycle, run_timestamp):
+    """Save the collected columns with metadata needed for the memo."""
     with open(filename, "w", encoding="utf-8", newline="") as csv_file:
+        csv_file.write("# Romi open-loop response\n")
+        csv_file.write(f"# timestamp,{run_timestamp}\n")
+        csv_file.write(f"# motor,{motor_name}\n")
+        csv_file.write(f"# duty_cycle_percent,{duty_cycle}\n")
+        csv_file.write("# units,percent,microseconds,ticks,ticks_per_second\n")
+        csv_file.write("# begin_data\n")
         csv_file.write(",".join(headers) + "\n")
         for row in zip(*columns):
             formatted_values = []
             for value in row:
                 formatted_values.append(f"{value:.12g}")
             csv_file.write(",".join(formatted_values) + "\n")
+        csv_file.write("# end_data\n")
 
 
-def save_plot(filename, headers, columns):
+def save_plot(filename, headers, columns, motor_name, duty_cycle):
     """Plot position and velocity against time."""
     time_seconds = []
     for time_us in columns[1]:
         time_seconds.append(time_us / 1_000_000)
 
-    figure, position_axes = pyplot.subplots()
+    figure, position_axes = pyplot.subplots(figsize=(7.0, 4.5))
     velocity_axes = position_axes.twinx()
 
     position_axes.plot(time_seconds, columns[2], label=headers[2],
-                       color="tab:blue")
+                       color="tab:blue", linewidth=1.6)
     velocity_axes.plot(time_seconds, columns[3], label=headers[3],
-                       color="tab:orange")
+                       color="tab:orange", linewidth=1.6)
 
-    position_axes.set_xlabel("time [s]")
-    position_axes.set_ylabel(headers[2], color="tab:blue")
-    velocity_axes.set_ylabel(headers[3], color="tab:orange")
+    position_axes.set_title(f"{motor_name.title()} Motor Open-Loop Response, "
+                            f"Duty Cycle = {duty_cycle}%")
+    position_axes.set_xlabel(TIME_LABEL)
+    position_axes.set_ylabel(POSITION_LABEL, color="tab:blue")
+    velocity_axes.set_ylabel(VELOCITY_LABEL, color="tab:orange")
     position_axes.tick_params(axis="y", labelcolor="tab:blue")
     velocity_axes.tick_params(axis="y", labelcolor="tab:orange")
 
+    lines = position_axes.get_lines() + velocity_axes.get_lines()
+    labels = []
+    for line in lines:
+        labels.append(line.get_label())
+
+    position_axes.legend(lines, labels, loc="lower right")
     position_axes.grid(True)
     figure.tight_layout()
     figure.savefig(filename, dpi=200)
@@ -268,8 +288,10 @@ def main():
                 print("Waiting for dataset")
                 headers, columns = collect_dataset(ser)
 
-                save_csv(data_filename, headers, columns)
-                save_plot(plot_filename, headers, columns)
+                save_csv(data_filename, headers, columns, motor_name,
+                         duty_cycle, timestamp)
+                save_plot(plot_filename, headers, columns, motor_name,
+                          duty_cycle)
 
                 print(f"Saved {len(columns[0])} valid data rows to {data_filename}")
                 print(f"Saved plot to {plot_filename}")

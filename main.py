@@ -46,9 +46,9 @@ user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, effort)
  
 def main():
    
-    cotask.task_list.append(cotask.Task(left_mot_task.run(), name = "left motor task", priority = 1, profile = False, period = 10))
-    cotask.task_list.append(cotask.Task(right_mot_task.run(), name = "right motor task", priority = 2, profile = False, period = 10))
-    cotask.task_list.append(cotask.Task(user_task.run(), name = "user task", priority = 0, profile = False, period = 10))
+    cotask.task_list.append(cotask.Task(left_mot_task.run(), name = "left motor task", priority = 1, profile = True, period = 10))
+    cotask.task_list.append(cotask.Task(right_mot_task.run(), name = "right motor task", priority = 2, profile = True, period = 10))
+    cotask.task_list.append(cotask.Task(user_task.run(), name = "user task", priority = 0, profile = True, period = 0))
  
  
     try: 
@@ -58,6 +58,7 @@ def main():
  
  
     except KeyboardInterrupt:
+        print(cotask.task_list.profile())
         pass
  
     finally:
