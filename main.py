@@ -2,7 +2,7 @@ from pyb import Pin, Timer, USB_VCP
 from time import ticks_diff, ticks_add, ticks_us
 from motor import MotorDriver
 from encoder import Encoder
-from taskmotor_gen import TaskMotor
+from taskmotor import TaskMotor, ClosedLoop
 from taskuser import TaskUser
 import cotask
 from array import array
@@ -15,32 +15,44 @@ class Cell:
 ser = USB_VCP()
  
  
-trial_set =  [33]
-n_samples = 101*len(trial_set)
+n_samples = 101
  
 pwm_tim = Timer(2, freq=20_000)
- 
+
+
+#MotorDriver and Encoder class objects 
 right_mot = MotorDriver(Pin.cpu.A0, Pin.cpu.C8, Pin.cpu.C9, pwm_tim, 1)
 left_mot = MotorDriver(Pin.cpu.A1, Pin.cpu.B8, Pin.cpu.B9, pwm_tim, 2)
  
 right_enc = Encoder(3, 1, 2, Pin.cpu.B4, Pin.cpu.B5, sign = -1)
 left_enc = Encoder(4, 1, 2, Pin.cpu.B6, Pin.cpu.B7)
- 
+
+#Closed-loop controller setup
+V_bat = 7.2
+
+left_controller = ClosedLoop(-V_bat, V_bat)
+right_controller = ClosedLoop(-V_bat, V_bat)
+
+
+#Shared variables changed by TaskUser
+omega_sp = Cell(0.0)
+kp = Cell(0.0)
+ki = Cell(0.0)
 l_go = Cell(False)          
 r_go = Cell(False)          
 l_done = Cell(False)        
 r_done = Cell(False)        
 l_data = array('f', [0]*(n_samples*4))
 r_data = array('f', [0]*(n_samples*4))
-effort = []
-l_effort = []
-r_effort = []
- 
+
  
 # TaskMotor and TaskUser class Objects
-left_mot_task = TaskMotor(left_enc, left_mot, trial_set, "left", l_go, l_done, l_data)
-right_mot_task = TaskMotor(right_enc, right_mot, trial_set, "right", r_go, r_done, r_data)
-user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, effort) 
+left_mot_task = TaskMotor(left_enc, left_mot, left_controller, "left", l_go, l_done, l_data, omega_sp, kp, V_bat)
+right_mot_task = TaskMotor(right_enc, right_mot, right_controller, "right", r_go, r_done, r_data, omega_sp, kp, V_bat)
+user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, omega_sp, kp, ki) 
+
+
+
  
  
 def main():
