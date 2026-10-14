@@ -8,7 +8,7 @@ help_menu =  (
     "| ME 4305 Romi Tuning Interface Help Menu                                      |",
     "+-----+------------------------------------------------------------------------+",
     "| h/H | Print help menu                                                        |",
-    "| o/O | Enter the desired angular velocity [rad/s]                             |",
+    "| s/S | Enter the desired angular velocity [rad/s]                             |",
     "| p/P | Enter the proportional gain Kp [V/(rad/s)]                             |",
     "| i/I | Enter the integral gain Ki [V/rad]                                     |",
     "| l/L | Run closed-loop repsonse on left motor and print results               |",
@@ -20,6 +20,10 @@ help_menu =  (
 
 # Used for printing encoder data
 ROWS_PER_PASS = 4
+
+OMEGA_LIMIT = 50
+KP_LIMIT = 100
+KI_LIMIT = 100
 
 # List of states
 S0_INIT = 0
@@ -35,7 +39,7 @@ S8_KI = 8
 
 
 class TaskUser:
-    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, omega_sp, kp, ki):
+    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat):
 
         self.l_go = l_go
         self.r_go = r_go
@@ -47,6 +51,11 @@ class TaskUser:
         self.kp = kp
         self.ki = ki
         self.input_gen = None
+
+        self.motor_period_ms = motor_period_ms
+        self.user_period_ms = user_period_ms
+        self.V_bat = V_bat
+
      
         self.vcp = vcp
         self.help_idx = 0
@@ -57,7 +66,7 @@ class TaskUser:
         self.row = 0
 
 
-    def get_float_input(self, limit = 100):
+    def get_float_input(self, limit = 100, signed = True):
         
         char_buf: list = []
         digits: set = set(map(str, range(10)))
@@ -67,6 +76,10 @@ class TaskUser:
             
             if self.vcp.any():
                 char_in = self.vcp.read(1).decode()
+
+                if char_in in {"E", "e"}:
+                    self.vcp.write("\r\n")
+                    return "EXIT"
                 
                 if char_in in digits:
                     self.vcp.write(char_in)
@@ -76,7 +89,7 @@ class TaskUser:
                     self.vcp.write(char_in)
                     char_buf.append(char_in)
         
-                elif char_in == "-" and len(char_buf) == 0:
+                elif char_in == "-" and len(char_buf) == 0 and signed:
                     self.vcp.write(char_in)
                     char_buf.append(char_in)
                 
@@ -109,7 +122,12 @@ class TaskUser:
             yield 0
 
 
+    def exit_program(self, active_test=False):
+        if active_test:
+            print("# TEST_ABORTED")
 
+        print("# EXIT")
+        raise KeyboardInterrupt
 
     def run(self):
         state = 0
@@ -134,7 +152,7 @@ class TaskUser:
                         self.help_idx = 0
                         state = 2
 
-                    elif char_in in {"O", 'o'}:
+                    elif char_in in {"S", 's'}:
                         print("Enter Velocity as Omega [rad/s]:")
 
                         state = 6
@@ -182,7 +200,7 @@ class TaskUser:
                         state = 4
 
                     elif char_in in {"E", "e"}:
-                        raise KeyboardInterrupt
+                        self.exit_program()
 
 
             elif state == 2:
@@ -194,6 +212,12 @@ class TaskUser:
                     state = 1
 
             elif state == 3:                           # Left Motor State
+
+                if self.vcp.any():
+                    char_in = self.vcp.read(1).decode()
+
+                    if char_in in{"E", "e"}:
+                        self.exit_program(active_test=True)
               
                 if self.l_done.value:
                     self.l_done.value = False
@@ -201,6 +225,13 @@ class TaskUser:
                 
 
             elif state == 4:                           # Right Motor State
+
+                if self.vcp.any():
+                    char_in = self.vcp.read(1).decode()
+
+                    if char_in in {"E", "e"}:
+                        self.exit_program(active_test=True)
+
               
                 if self.r_done.value:
                     self.r_done.value = False
@@ -211,12 +242,37 @@ class TaskUser:
                 rows = len(self.active_data) // 4
 
                 if not self.header:
-                    print("STARTING CLOSED-LOOP RESPONSE")
-                    print(f"Motor: {self.active_mot}")
-                    print(f"Setpoint [rad/s]: {self.active_omega_sp}")
-                    print(f"Kp [V/(rad/s)]: {self.active_kp}")
-                    print(f"Ki [V/rad]: {self.active_ki}")
-                    print(f"Time [s], Setpoint [rad/s], Measured Velocity [rad/s], Voltage Command [V]") 
+
+                    if self.active_ki == 0:
+                        control_structure = "P"
+
+                    else:
+                        control_structure = "PI"
+
+
+                    duration = rows * self.motor_period_ms / 1000
+                    
+                    print("# STARTING CLOSED-LOOP RESPONSE")
+                    print(f"# Control Structure: {control_structure}")
+                    print(f"# Motor: {self.active_mot}")
+                    print(f"# Setpoint [rad/s]: {self.active_omega_sp}")
+                    print(f"# Kp [V/(rad/s)]: {self.active_kp}")
+                    print(f"# Ki [V/rad]: {self.active_ki}")
+                    print(f"# Motor task period [ms]: {self.motor_period_ms} ")
+                    print(f"# User task period [ms]: {self.user_period_ms}")
+                    print(f"# Duration [s]: {duration}")
+                    print(f"# Battery voltage refrence [V]: {self.V_bat}")
+                    print(f"# Voltage limits [V]: {-self.V_bat}, {self.V_bat}")
+                    print("# Units: time = s, setpoint = rad/s, velocity = rad/s, voltage = V")
+                    print(
+                        f"# Validation Limits: |setpoint| <= {OMEGA_LIMIT} rad/s, "
+                        f"|Kp| <= {KP_LIMIT} V/(rad/s), "
+                        f"|Ki| <= {KI_LIMIT} V/rad"
+                    )
+
+                    print("time_s,setpoint_rad_s,measured_velocity_rad_s,voltage_command_V")
+
+
                     self.header = True
 
 
@@ -224,17 +280,19 @@ class TaskUser:
                     if self.row < rows:
                         i = self.row*4
                         d = self.active_data
-                        print("{},{},{},{}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
+
+                        print("{},          {},          {},          {}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
                         self.row +=1
 
                     if self.row >= rows:
-                        print("CLOSED-LOOP RESPONSE COMPLETE")
+                        print("# TEST_COMPLETE")
                         state = 1
                         break
 
+
             elif state == 6:        
                 if self.input_gen is None:
-                    self.input_gen = self.get_float_input(limit = 50)
+                    self.input_gen = self.get_float_input(limit = OMEGA_LIMIT)
                 try:
                     next(self.input_gen)
 
@@ -242,16 +300,27 @@ class TaskUser:
                     value = result.value
                     self.input_gen = None
 
-                    if value is not None:
+                    if value == "EXIT":
+                        self.exit_program()
+
+                    elif value is not None:
                         self.omega_sp.value = value
                         print(f"Omega set to {value} rad/s")
+                        voltage = self.kp.value*self.omega_sp.value + self.ki.value*self.omega_sp.value*self.motor_period_ms/1_000
+
+                        if voltage > self.V_bat:
+                            print("Motor voltage too high, saturating to max value")
+                        elif voltage < -self.V_bat:
+                            print("Motor voltage too low, saturation to min value")
+
+
 
                     state = 1
                 
 
             elif state == 7:
                 if self.input_gen is None:
-                    self.input_gen = self.get_float_input(limit = 100)
+                    self.input_gen = self.get_float_input(limit = KP_LIMIT, signed=False)
 
                 try:
 
@@ -262,7 +331,10 @@ class TaskUser:
                     value = result.value
                     self.input_gen = None
 
-                    if value is not None:
+                    if value == "EXIT":
+                        self.exit_program()
+                    
+                    elif value is not None:
                         self.kp.value = value
                         print(f"Proportional Gain Kp set to {value} V(rad/s)")
 
@@ -270,7 +342,7 @@ class TaskUser:
 
             elif state == 8:
                 if self.input_gen is None:
-                    self.input_gen = self.get_float_input(limit = 100)
+                    self.input_gen = self.get_float_input(limit = KI_LIMIT, signed=False)
 
                 try:
                      next(self.input_gen)
@@ -280,7 +352,10 @@ class TaskUser:
                     value = result.value
                     self.input_gen = None
 
-                    if value is not None:
+                    if value == "EXIT":
+                        self.exit_program()
+
+                    elif value is not None:
                         self.ki.value = value
                         print(f"Integral Gain Ki set to {value} V/rad")
 

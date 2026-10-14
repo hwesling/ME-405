@@ -30,6 +30,9 @@ left_enc = Encoder(4, 1, 2, Pin.cpu.B6, Pin.cpu.B7)
 #Closed-loop controller setup
 V_bat = 7.2
 
+motor_period_ms = 50
+user_period_ms = 0
+
 left_controller = ClosedLoop(-V_bat, V_bat)
 right_controller = ClosedLoop(-V_bat, V_bat)
 
@@ -47,9 +50,9 @@ r_data = array('f', [0]*(n_samples*4))
 
  
 # TaskMotor and TaskUser class Objects
-left_mot_task = TaskMotor(left_enc, left_mot, left_controller, "left", l_go, l_done, l_data, omega_sp, kp, V_bat)
-right_mot_task = TaskMotor(right_enc, right_mot, right_controller, "right", r_go, r_done, r_data, omega_sp, kp, V_bat)
-user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, omega_sp, kp, ki) 
+left_mot_task = TaskMotor(left_enc, left_mot, left_controller, "left", l_go, l_done, l_data, omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat)
+right_mot_task = TaskMotor(right_enc, right_mot, right_controller, "right", r_go, r_done, r_data, omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat)
+user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat) 
 
 
 
@@ -57,9 +60,9 @@ user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, omega_sp, 
  
 def main():
    
-    cotask.task_list.append(cotask.Task(left_mot_task.run(), name = "left motor task", priority = 1, profile = False, period = 10))
-    cotask.task_list.append(cotask.Task(right_mot_task.run(), name = "right motor task", priority = 2, profile = False, period = 10))
-    cotask.task_list.append(cotask.Task(user_task.run(), name = "user task", priority = 0, profile = False, period = 10))
+    cotask.task_list.append(cotask.Task(left_mot_task.run(), name = "left motor task", priority = 1, profile = True, period = motor_period_ms))
+    cotask.task_list.append(cotask.Task(right_mot_task.run(), name = "right motor task", priority = 2, profile = True, period = motor_period_ms))
+    cotask.task_list.append(cotask.Task(user_task.run(), name = "user task", priority = 0, profile = True, period = user_period_ms))
  
  
     try: 
@@ -77,7 +80,7 @@ def main():
         right_mot.disable()
  
         
-        #print(cotask.task_list.profile())
+        print(cotask.task_list.profile())
        
  
         
