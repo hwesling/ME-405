@@ -6,18 +6,22 @@ from pyb       import Pin, Timer, USB_VCP, UART # type: ignore
 
 help_menu =  (
     "+------------------------------------------------------------------------------+",
-    "| ME 4305 Romi Tuning Interface Help Menu                                      |",
+    "| ME 405 Romi Tuning Interface Help Menu                                       |",
     "+-----+------------------------------------------------------------------------+",
     "| h/H | Print help menu                                                        |",
-    "| d/D | Enter the duty cycle for the next open-loop test                       |",
-    "| l/L | Trigger step response sequence on left motor and print results         |",
-    "| r/R | Trigger step response sequence on right motor and print results        |",
+    "| s/S | Enter velocity setpoint [rad/s],                                       |",
+    "| p/P | Enter proportional gain (Kp) [V/(rad/s)]                               |",
+    "| i/I | Enter integral gain (Ki) [V/rad]                                       |",
+    "| l/L | Trigger left motor closed-loop response                                |",
+    "| r/R | Trigger right motor closed-loop response                               |",
+    "| x/X | Abort the active test                                                  |",
     "| e/E | Exit program                                                           |",
     "+-----+------------------------------------------------------------------------+",
 )
 
 # Used for printing encoder data
 ROWS_PER_PASS = 4
+CHARS_PER_PASS = 16
 
 # List of states
 S0_INIT = 0
@@ -26,29 +30,99 @@ S2_PRINT_HELP = 2
 S3_LEFT_MOT = 3
 S4_RIGHT_MOT = 4
 S5_PRINT_RESULTS = 5
-S6_DUTY_CYCLE_INPUT = 6
+S6_VELOCITY_SP_INPUT = 6
+S7_KP_INPUT = 7
+S8_KI_INPUT = 8
 
 
 class TaskUser:
-    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, effort):
+    def __init__(self, l_go, r_go, l_done, r_done, l_status, r_status, l_count, r_count, l_data, r_data, vcp, omega_sp, Kp, Ki, motor_period_ms, user_period_ms, n_samples, V_batt):
 
         self.l_go = l_go
         self.r_go = r_go
         self.l_done = l_done
         self.r_done = r_done
+        self.l_status = l_status
+        self.r_status = r_status
+        self.l_count = l_count
+        self.r_count = r_count
         self.l_data = l_data
         self.r_data = r_data
-        self.effort = effort
-     
+
         self.vcp = vcp
+        self.omega_sp = omega_sp
+        self.Kp = Kp
+        self.Ki = Ki
+        self.motor_period_ms = motor_period_ms
+        self.user_period_ms = user_period_ms
+        self.n_samples = n_samples
+        self.V_batt = V_batt
+
         self.help_idx = 0
         self.active_data = None
         self.active_done = None
+        self.active_go = None
+        self.active_status = None
+        self.active_count = None
         self.active_mot = None
-        self.active_effort = 0
+        self.active_omega_sp = 0.0
+        self.active_Kp = 0.0
+        self.active_Ki = 0.0
         self.header = False
         self.row = 0
-        self.ser = USB_VCP()
+        self.input_gen = None
+
+
+    def multichar_input(self, signed = True):
+
+        char_buf: list = []
+        digits: set = set(map(str, range(10)))
+        term: set = {"\r", "\n"}
+
+        while True:
+
+            if self.vcp.any():
+                char_in = self.vcp.read(1).decode()
+
+                if char_in in digits:
+                    self.vcp.write(char_in)
+                    char_buf.append(char_in)
+
+                elif char_in == "." and char_in not in char_buf:
+                    self.vcp.write(char_in)
+                    char_buf.append(char_in)
+
+                elif char_in == "-" and len(char_buf) == 0 and signed:
+                    self.vcp.write(char_in)
+                    char_buf.append(char_in)
+
+                elif char_in == "\x7f" and len(char_buf) > 0:
+                    self.vcp.write(char_in)
+                    char_buf.pop()
+
+                # If a termination character is received it is interpreted
+                # as the end of data entry.
+                elif char_in in term:
+                    self.vcp.write("\r\n")
+                    entered_text = "".join(char_buf)
+
+                    if len(char_buf) == 0:
+                        self.vcp.write("Value not changed\r\n")
+                        return None
+
+                    elif entered_text in {"-", ".", "-."}:
+                        self.vcp.write("Invalid input\r\n")
+                        return None
+
+                    value = float(entered_text)
+
+                    if value != value:
+                        self.vcp.write("Invalid input\r\n")
+                        return None
+
+                    return value
+
+            yield 0
 
 
     def run(self):
@@ -57,7 +131,7 @@ class TaskUser:
         while True:
 
             if  state == 0:
-                for _ in range(16):
+                for _ in range(16):         # CHARS_PER_PASS = 16
                    if self.vcp.any():
                       self.vcp.read(1)
                 self.help_idx = 0  
@@ -74,38 +148,67 @@ class TaskUser:
                         self.help_idx = 0
                         state = 2
 
-                    elif char_in in {"D", 'd'}:
-                        print("Enter Duty Cycle [%]:")
-                        value: float = self.effort.value
-                        char_buf: list = []
-                        digits: set = set(map(str, range(10)))
-                        term: set = {"\r", "\n"}
-                        done = False
+                    elif char_in in {"S", "s"}:
+                        print("Enter Velocity Setpoint [rad/s]:")
                         state = 6
-                    
+
+                    elif char_in in {"P", "p"}:
+                        print("Enter Proportional Gain Kp [V/(rad/s)]:")
+                        state = 7
+
+                    elif char_in in {"I", "i"}:
+                        print("Enter Integral Gain Ki [V/rad]:")
+                        state = 8
+
                     elif char_in in {"L", "l"}:
-                        print("Left Motor Start")
                         self.active_data = self.l_data
                         self.active_done = self.l_done
+                        self.active_status = self.l_status
+                        self.active_count = self.l_count
                         self.active_mot = "left"
-                        self.active_effort = self.effort.value
+
+                        self.active_omega_sp = self.omega_sp.value
+                        self.active_Kp = self.Kp.value
+                        self.active_Ki = self.Ki.value
+
+                        self.active_count.value = 0
+                        self.active_status.value = "starting"
+                        self.l_done.value = False
                         self.header = False
                         self.row = 0
                         self.l_go.value = True
                         state = 3
-                    
+
                     elif char_in in {"R", "r"}:
                         print("Right Motor Start")
+
                         self.active_data = self.r_data
                         self.active_done = self.r_done
+                        self.active_status = self.r_status
+                        self.active_count = self.r_count
                         self.active_mot = "right"
-                        self.active_effort = self.effort.value
+
+                        self.active_omega_sp = self.omega_sp.value
+                        self.active_Kp = self.Kp.value
+                        self.active_Ki = self.Ki.value
+
+                        self.active_count.value = 0
+                        self.active_status.value = "starting"
+                        self.r_done.value = False
                         self.header = False
                         self.row = 0
                         self.r_go.value = True
                         state = 4
 
+                    elif char_in in {"X", "x"}:
+                        self.vcp.write("Abort requested\r\n")
+                        self.l_go.value = False
+                        self.r_go.value = False
+                        sys.exit(0)
+
                     elif char_in in {"E", "e"}:
+                        self.l_go.value = False
+                        self.r_go.value = False
                         raise KeyboardInterrupt
 
 
@@ -115,12 +218,19 @@ class TaskUser:
                     self.help_idx +=1
 
                 else:
+                    print(f"Current settings: setpoint = {self.omega_sp.value} rad/s, Kp = {self.Kp.value}, Ki = {self.Ki.value}")
                     state = 1
+
 
             elif state == 3:                           # Left Motor State
                 for _ in range (16):
                     if self.vcp.any():
-                        self.vcp.read(1)
+                        self.vcp.read(1).decode()
+
+                    elif char_in in {"E", "e"}:
+                        self.l_go.value = False
+                        self.r_go.value = False
+                        raise KeyboardInterrupt
 
                 if self.l_done.value:
                     self.l_done.value = False
@@ -131,88 +241,122 @@ class TaskUser:
                 for _ in range(16):
                     if self.vcp.any():
                         self.vcp.read(1)
+                           
+                    elif char_in in {"E", "e"}:
+                        self.l_go.value = False
+                        self.r_go.value = False
+                        raise KeyboardInterrupt
 
                 if self.r_done.value:
                     self.r_done.value = False
                     state = 5
 
+
             elif state == 5:
-                for _ in range(16):
-                    if self.vcp.any():
-                        self.vcp.read(1)
-                rows = len(self.active_data) // 4
+                rows = self.active_count.value
 
                 if not self.header:
-                    print("STARTING OPEN-LOOP RESPONSE")
-                    print(f"Motor: {self.active_mot}    Duty Cycle [%]: {self.active_effort}")
-                    print("Duty Cycle [%], time [us], Position [ticks], Velocity [ticks/s]")
+                    high_sat = False
+                    low_sat = False
+
+                    for row in range(rows):
+                        voltage = self.active_data[row*4 + 3]
+
+                    print("STARTING CLOSED-LOOP RESPONSE")
+                    print(f"Motor: {self.active_mot}")
+                    print(f"Setpoint [rad/s]: {self.active_omega_sp}")
+                    print(f"Kp [V/(rad/s)]: {self.active_Kp}")
+                    print(f"Ki [V/rad]: {self.active_Ki}")
+                    print(f"Motor task period [ms]: {self.motor_period_ms}")
+                    print(f"User task period [ms]: {self.user_period_ms}")
+                    print(f"Samples requested: {self.n_samples}")
+                    print(f"Battery voltage reference [V]: {self.V_batt}")
+                    print(f"Voltage limits [V]: {-self.V_batt}, {self.V_batt}")
+
+                    print("Time [s], Setpoint [rad/s], Measured Velocity [rad/s], Voltage Command [V]")
                     self.header = True
+
 
                 for _ in range(ROWS_PER_PASS):
                     if self.row < rows:
                         i = self.row*4
                         d = self.active_data
-                        print("{},          {},          {},          {}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
+                        print("{},           {},          {},          {}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
                         self.row +=1
 
                     if self.row >= rows:
-                        print("OPEN-LOOP RESPONSE COMPLETE")
+                        if self.active_status.value == "completed":
+                            print("CLOSED-LOOP RESPONSE COMPLETE")
+
+                        elif self.active_status.value == "aborted":
+                            print("CLOSED-LOOP RESPONSE ABORTED")
+
+                        else:
+                            print("CLOSED-LOOP RESPONSE FAILED")
+
                         state = 1
                         break
 
-            elif state == 6:                           # Duty Cycle Input State --> only listed as S6 to maintain existing FSM logic,
-                                                       # state 5 (print) kicks back to main/taskmotor, S6 should be a generator for reusability later (as of 10/1/26)
-                if not done:
 
-                    if self.ser.any():
-                        char_in = self.ser.read(1).decode()
-                        
-                        if char_in in digits:
-                            self.ser.write(char_in)
-                            char_buf.append(char_in)
-                
-                        elif char_in == "." and char_in not in char_buf:
-                            self.ser.write(char_in)
-                            char_buf.append(char_in)
-                
-                        elif char_in == "-" and len(char_buf) == 0:
-                            self.ser.write(char_in)
-                            char_buf.append(char_in)
-                        
-                        elif char_in == "\x7f" and len(char_buf) > 0:
-                            self.ser.write(char_in)
-                            char_buf.pop()
+            elif state == 6:
+                if self.input_gen is None:
+                    self.input_gen = self.multichar_input(signed = True)
 
-                        # If a termination character is received it is interpreted
-                        # as the end of data entry.
-                        elif char_in in term:
-                            
-                            if len(char_buf) == 0:                                                     # Might need "or abs(float("".join(char_buf))) > 100" in this for kicking out bad vals
-                                self.ser.write("\r\n")                                                 
-                                self.ser.write("Value not changed\r\n")
-                                char_buf = []
-                                done = True
-                                
-                            elif "".join(char_buf) in {"-", ".", "-."}:
-                                  self.ser.write("\r\n")
-                                  self.ser.write("Invalid input\r\n")
-                                  char_buf = []
-                                  done = True                            
+                try:
+                    next(self.input_gen)
 
-                            elif abs(float("".join(char_buf))) > 100:                                  # Might need to remove this line (see comment above)
-                                self.ser.write("\r\n")                                                 # Will need to be adjusted when controller gain is implemented
-                                self.ser.write("Value outside of allowable range\r\n")
-                                char_buf = []
-                                done = True    
-                                
-                            else:
-                                self.ser.write("\r\n")
-                                value = float("".join(char_buf))
-                                self.effort.value = value
-                                self.ser.write(f"Value set to {value}\r\n")
-                                char_buf = []
-                                done = True
-                else:
-                    state = 1                
+                except StopIteration as result:
+                    value = result.value
+                    self.input_gen = None
+
+                    if value is not None:
+                        self.omega_sp.value = value
+                        print(f"Velocity setpoint set to {value} rad/s")
+                        voltage = self.Kp.value*self.omega_sp.value + self.Ki.value*self.omega_sp.value*self.motor_period_ms/1_000
+
+                        if voltage > self.V_batt:
+                              print("Motor voltage too high, saturating to max value.")
+                        elif voltage < -self.V_batt:
+                            print("Motor voltage too low, saturating to min value.")
+
+                    state = 1
+
+
+            elif state == 7:
+                if self.input_gen is None:
+                    self.input_gen = self.multichar_input(signed = False)
+
+                try:
+                    next(self.input_gen)
+
+                except StopIteration as result:
+                    value = result.value
+                    self.input_gen = None
+
+                    if value is not None:
+                        self.Kp.value = value
+                        print(f"Proportional Gain Kp set to {value} V/(rad/s)")
+
+                    state = 1
+
+
+            elif state == 8:
+                if self.input_gen is None:
+                    self.input_gen = self.multichar_input(signed = False)
+
+                try:
+                     next(self.input_gen)
+
+                except StopIteration as result:
+
+                    value = result.value
+                    self.input_gen = None
+
+                    if value is not None:
+                        self.Ki.value = value
+                        print(f"Integral Gain Ki set to {value} V/rad")
+
+                    state = 1
+
 
             yield state
