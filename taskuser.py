@@ -8,11 +8,13 @@ help_menu =  (
     "| ME 4305 Romi Tuning Interface Help Menu                                      |",
     "+-----+------------------------------------------------------------------------+",
     "| h/H | Print help menu                                                        |",
-    "| s/S | Enter the desired angular velocity [rad/s]                             |",
+    "| v/V | Enter the desired angular velocity [rad/s]                             |",
     "| p/P | Enter the proportional gain Kp [V/(rad/s)]                             |",
     "| i/I | Enter the integral gain Ki [V/rad]                                     |",
     "| l/L | Run closed-loop repsonse on left motor and print results               |",
-    "| r/R | Run closed-loop response on right motor and print results              |",
+    "| r/R | Run closed-loop response on right motor and print results              |", 
+    "| a/A | Print one reading from each line sensor                                |",
+    "| g/G | Run both motors                                                        |",
     "| e/E | Exit program                                                           |",
     "+-----+------------------------------------------------------------------------+",
 )
@@ -35,6 +37,7 @@ S5_PRINT_RESULTS = 5
 S6_OMEGA_INPUT = 6
 S7_KP = 7
 S8_KI = 8
+S9_BOTH_MOT = 9
 
 
 
@@ -55,7 +58,6 @@ class TaskUser:
         self.motor_period_ms = motor_period_ms
         self.user_period_ms = user_period_ms
         self.V_bat = V_bat
-
      
         self.vcp = vcp
         self.help_idx = 0
@@ -103,7 +105,7 @@ class TaskUser:
                     self.vcp.write("\r\n")
                     entered_text = "".join(char_buf)
                     
-                    if len(char_buf) == 0:                                                     # Might need "or abs(float("".join(char_buf))) > 100" in this for kicking out bad vals
+                    if len(char_buf) == 0:                                               
                         self.vcp.write("Value not changed\r\n")
                         return None
     
@@ -113,7 +115,7 @@ class TaskUser:
                     
                     value = float(entered_text)                            
         
-                    if abs(value) > limit:                                  # Might need to remove this line (see comment above)
+                    if abs(value) > limit:                                 
                         self.vcp.write("Value outside of allowable range\r\n")
                         return None
                     return value
@@ -152,7 +154,7 @@ class TaskUser:
                         self.help_idx = 0
                         state = 2
 
-                    elif char_in in {"S", 's'}:
+                    elif char_in in {"V", 'v'}:
                         print("Enter Velocity as Omega [rad/s]:")
 
                         state = 6
@@ -198,6 +200,35 @@ class TaskUser:
                         self.row = 0
                         self.r_go.value = True
                         state = 4
+
+                    elif char_in in {"A", "a"}:
+                        readings = self.line_sensor.read()
+
+                        print("line-sensor readings:")
+                        for index, value in enumerate(readings):
+                            print(f"OUT{index + 1}: {value}")
+
+                    elif char_in in {"G","g"}:
+                        print("Both motors start")
+                        
+                        self.active_data = self.r_data
+                        self.active_done = self.r_done
+                        self.active_mot = "right"
+
+                        self.active_omega_sp = self.omega_sp.value
+                        self.active_kp = self.kp.value
+                        self.active_ki = self.ki.value
+
+                        self.active_data = self.l_data
+                        self.active_done = self.l_done
+                        self.active_mot = "left"
+
+                        self.header = False
+                        self.row = 0
+                        self.r_go.value = True
+                        self.l_go.value = True
+
+                        state = 9
 
                     elif char_in in {"E", "e"}:
                         self.exit_program()
@@ -250,7 +281,8 @@ class TaskUser:
                         control_structure = "PI"
 
 
-                    duration = rows * self.motor_period_ms / 1000
+                    duration = 100
+
                     
                     print("# STARTING CLOSED-LOOP RESPONSE")
                     print(f"# Control Structure: {control_structure}")
@@ -361,5 +393,19 @@ class TaskUser:
 
                     state = 1
 
+            elif state == 9:
+
+                #  motor
+                if self.vcp.any():
+                    char_in = self.vcp.read(1).decode()
+
+                    if char_in in{"E", "e"}:
+                        self.exit_program(active_test=True)
+                              
+                if self.l_done.value and self.r_done.value:
+                    self.l_done.value = False
+                    self.r_done.value = False
+                    state = 5
+                    
 
             yield state

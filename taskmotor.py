@@ -1,4 +1,4 @@
-""" MECHA 15 - Trinity """
+""" MECHA 15 - Harry """
 """ Motor function task for the Romi robot, implemented as a generator and FSM so the class can be instantiated for both the left and right motors """
 
 from time import ticks_diff, ticks_us
@@ -10,9 +10,11 @@ S1_COLLECT = 1
 S2_PRINT = 2
 
 N_SAMPLES = 101
+TEST_DURATION = 100
+
 
 class TaskMotor:
-    def __init__(self, enc, mot, controller, task_label, go, done, data, omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat):
+    def __init__(self, enc, mot, controller, task_label, go, done, data, kp, ki, motor_period_ms, user_period_ms, V_bat, line_go):
 
         self.enc = enc
         self.mot = mot
@@ -23,6 +25,9 @@ class TaskMotor:
         self.data = data
 
         self.omega_sp = omega_sp
+        self.line_go = line_go
+     
+
         self.kp = kp
         self.ki = ki
 
@@ -40,6 +45,8 @@ class TaskMotor:
         self.test_omega_sp = 0
         self.test_kp = 0
         self.test_ki = 0
+
+        self.duration = TEST_DURATION
 
 
     def run(self):
@@ -77,7 +84,12 @@ class TaskMotor:
                 dt = ticks_diff(now, self.prev_control_time) / 1_000_000
                 self.prev_control_time = now
 
-                voltage = self.controller.run(self.test_omega_sp, velocity, self.test_kp, self.test_ki, dt)
+                if self.line_go.value:
+                    active_omega_sp = self.omega_sp.value
+                else:
+                    active_omega_sp = self.test_omega_sp
+
+                voltage = self.controller.run(active_omega_sp, velocity, self.test_kp, self.test_ki, dt)
                 duty = 100 *voltage/self.V_bat
                 self.mot.set_effort(duty)
 
@@ -89,7 +101,7 @@ class TaskMotor:
 
                 self.collect += 1
     
-                if self.collect >= N_SAMPLES:
+                if ticks_diff(now, self.trial_start) >= self.duration * 1_000_000:
                     self.mot.disable()
                     self.go.value = False
                     self.done.value = True
@@ -108,6 +120,7 @@ class TaskMotor:
             # Yield the value of the next state to run
             yield self.state
 
+
 class ClosedLoop:
     def __init__(self, V_min, V_max):
 
@@ -116,9 +129,10 @@ class ClosedLoop:
 
         self.integral = 0
 
-    def reset(self):
 
+    def reset(self):
         self.integral = 0
+
 
     def run(self, omega_sp, omega_k, kp, ki, dt):
 
