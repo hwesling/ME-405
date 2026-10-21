@@ -26,17 +26,28 @@ class TaskLine:
 
     def run(self):
         while True:
+
             if not self.line_go.value:
                 yield 0
                 continue
+
+            calibration = self.calibration.value
+
+            if calibration is None:
+                print("no calibration loaded")
+                self.line_go.value = False
+                self.stop()
+                yield 1
+                continue
+                
 
             readings = self.read_values()
             weights = []
             valid_calibration = True
 
             for i in range(len(readings)):
-                white = self.calibration["white"][i]
-                black = self.calibration["black"][i]
+                white = calibration["white"][i]
+                black = calibration["black"][i]
                 span = black - white
 
                 if span <= 0:

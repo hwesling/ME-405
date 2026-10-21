@@ -2,6 +2,7 @@
 
 import sys
 from pyb import USB_VCP
+from line_calibration import save_calibration, load_calibration
 
 help_menu =  (
     "+------------------------------------------------------------------------------+",
@@ -14,8 +15,9 @@ help_menu =  (
     "| l/L | Run closed-loop repsonse on left motor and print results               |",
     "| r/R | Run closed-loop response on right motor and print results              |", 
     "| g/G | Run both motors                                                        |",
-    "| f/F | Line following enabled                                                 |",
+    "| f/F | Run line following program                                             |",
     "| c/C | Line following gain (k line) [(rad/s)/mm]                              |",
+    "| b/B | Calibrate line sensors(black then white)                               |",
     "| e/E | Exit program                                                           |",
     "+-----+------------------------------------------------------------------------+",
 )
@@ -41,11 +43,14 @@ S8_KI = 8
 S9_BOTH_MOT = 9
 S10_LINE_FOLLOW = 10
 S11_LINE_KP = 11
+S12_CAL_BLACK = 12
+S13_CAL_WHITE = 13
+
 
 
 
 class TaskUser:
-    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, left_omega_sp, right_omega_sp, base_speed, line_kp, line_go, kp, ki, motor_period_ms, user_period_ms, V_bat):
+    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, left_omega_sp, right_omega_sp, base_speed, line_kp, line_go, kp, ki, motor_period_ms, user_period_ms, V_bat, sensor_adc, calibration, channels, calibration_file, min_span):
 
         self.l_go = l_go
         self.r_go = r_go
@@ -63,6 +68,31 @@ class TaskUser:
         self.line_go = line_go
         self.base_speed = base_speed
 
+        self.sensor_adc = sensor_adc
+
+        self.calibration = calibration
+        self.channels = channels
+        self.calibration_file = calibration_file
+        self.min_span = min_span
+
+        try:
+            self.calibration.value = load_calibration(
+                self.calibration_file,
+                self.channels,
+                self.min_span
+            )
+            print("Saved calibration loaded.")
+        
+        except (OSError, ValueError, KeyError, TypeError):
+            self.calibration.value = None
+            print("No valid saved calibration. Press B to calibrate.")
+
+        self.state = 0
+
+
+        self.black_averages = None
+
+
 
         self.motor_period_ms = motor_period_ms
         self.user_period_ms = user_period_ms
@@ -76,6 +106,8 @@ class TaskUser:
         self.header = False
         self.row = 0
 
+
+        
 
     def get_float_input(self, limit = 100, signed = True):
         
@@ -140,6 +172,23 @@ class TaskUser:
         print("# EXIT")
         raise KeyboardInterrupt
 
+    def read_sensor_values(self):
+        """Return one raw ADC reading from each active line sensor."""
+        return [adc.read() for adc in self.sensor_adc]
+
+
+    def capture_averages(self, samples=20):
+        """Return averaged readings from all 12 active sensors."""
+        totals = [0] * len(self.sensor_adc)
+    
+        for _ in range(samples):
+            readings = self.read_sensor_values()
+    
+            for index, reading in enumerate(readings):
+                totals[index] += reading
+    
+        return [total / samples for total in totals]
+    
     def run(self):
         state = 0
 
@@ -151,8 +200,6 @@ class TaskUser:
                       self.vcp.read(1)
                 self.help_idx = 0  
                 state = 2
-
-
 
             elif state == 1:
 
@@ -227,6 +274,15 @@ class TaskUser:
                     elif char_in in {"C", "c"}:
                         print("enter line following gain [(rad/s)/mm]:")
                         state = 11
+
+                    elif char_in in {"B", "b"}:
+                        self.line_go.value = False
+                        self.l_go.value = False
+                        self.r_go.value = False
+
+                        print("place all sensors over black then press enter")
+
+                        self.state = 12
 
                     elif char_in in {"E", "e"}:
                         self.exit_program()
@@ -418,7 +474,7 @@ class TaskUser:
                     if char_in in{"E", "e"}:
                         self.exit_program(active_test=True)
 
-            elif state == S11_LINE_KP:
+            elif state == 11:
                 if self.input_gen is None:
                     self.input_gen = self.get_float_input(limit=1.0, signed=False)
             
@@ -437,7 +493,45 @@ class TaskUser:
                         print("Line gain set to {}".format(value))
             
                     state = 1
-                            
-                    
+
+            elif state == 12:
+                if self.ser.any():
+                    char_in = self.ser.read(1)
+
+                    if char_in == b"\r" or char_in == b"\n":
+                        self.black_averages = self.capture_averages()
+                        print("Black:", self.black_averages)
+                        print("Place all 12 active sensors over WHITE, then press Enter.")
+                        self.state = 13
+
+
+            elif self.state == S13_CAL_WHITE:
+                if self.ser.any():
+                    char_in = self.ser.read(1)
+            
+                    if char_in == b"\r" or char_in == b"\n":
+                        white_averages = self.capture_averages()
+                        print("White:", white_averages)
+            
+                        calibration = {
+                            "channels": self.channels,
+                            "black": self.black_averages,
+                            "white": white_averages,
+                        }
+            
+                        try:
+                            save_calibration(
+                                self.calibration_file,
+                                calibration,
+                                self.channels,
+                                self.min_span
+                            )
+                            self.calibration.value = calibration
+                            print("Calibration saved.")
+                        except ValueError as error:
+                            print("Calibration rejected:", error)
+            
+                        self.state = 1
+                                            
 
             yield state
