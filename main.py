@@ -55,19 +55,19 @@ right_controller = ClosedLoop(-V_bat, V_bat)
 
 
 #Shared variables changed by TaskUser
-omega_sp = Cell(0.0)
 left_omega_sp = Cell(0.0)
 right_omega_sp = Cell(0.0)
 kp = Cell(0.0)
 ki = Cell(0.0)
 l_go = Cell(False)          
 r_go = Cell(False)          
-go = Cell(False)
 l_done = Cell(False)        
 r_done = Cell(False)        
 l_data = array('f', [0]*(n_samples*4))
 r_data = array('f', [0]*(n_samples*4))
 
+
+line_kp = Cell(0.05)
 base_speed = Cell(4.0)
 line_go = Cell(False)
 
@@ -75,8 +75,7 @@ line_go = Cell(False)
 #Class Objects
 left_mot_task = TaskMotor(left_enc, left_mot, left_controller, "left", l_go, l_done, l_data, left_omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat, line_go)
 right_mot_task = TaskMotor(right_enc, right_mot, right_controller, "right", r_go, r_done, r_data, right_omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat, line_go)
-user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat) 
-line_task = TaskLine(sensor_adc, None, SENSOR_POSITIONS_MM, left_omega_sp, right_omega_sp, base_speed, line_go) 
+user_task = TaskUser(l_go, r_go, l_done, r_done, l_data, r_data, ser, left_omega_sp, right_omega_sp, base_speed, line_kp, line_go, kp, ki, motor_period_ms, user_period_ms, V_bat) 
 
 
 
@@ -113,16 +112,10 @@ def main():
         save_calibration(CALIBRATION_FILE, calibration, channels, MIN_SPAN)
         print("New calibration")
 
-    #temperary centroid test
-    centroid_mm, sum_wi, weights = get_centroid(calibration)
- 
-    print("weights:", weights)
-    print("total weight:", sum_wi)
-    print("centroid [mm]:", centroid_mm)
 
-    #start existing scheduler only after calibration
+    line_task = TaskLine(read_sensor_values, calibration, SENSOR_POSITIONS_MM, left_omega_sp, right_omega_sp, base_speed, line_kp, line_go, l_go, r_go)
 
-   
+
     cotask.task_list.append(cotask.Task(left_mot_task.run(), name = "left motor task", priority = 2, profile = True, period = motor_period_ms))
     cotask.task_list.append(cotask.Task(right_mot_task.run(), name = "right motor task", priority = 2, profile = True, period = motor_period_ms))
     cotask.task_list.append(cotask.Task(user_task.run(), name = "user task", priority = 0, profile = True, period = user_period_ms))

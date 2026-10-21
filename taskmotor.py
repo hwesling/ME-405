@@ -10,11 +10,10 @@ S1_COLLECT = 1
 S2_PRINT = 2
 
 N_SAMPLES = 101
-TEST_DURATION = 100
 
 
 class TaskMotor:
-    def __init__(self, enc, mot, controller, task_label, go, done, data, kp, ki, motor_period_ms, user_period_ms, V_bat, line_go):
+    def __init__(self, enc, mot, controller, task_label, go, done, data, omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat, line_go):
 
         self.enc = enc
         self.mot = mot
@@ -46,7 +45,6 @@ class TaskMotor:
         self.test_kp = 0
         self.test_ki = 0
 
-        self.duration = TEST_DURATION
 
 
     def run(self):
@@ -74,6 +72,15 @@ class TaskMotor:
                     self.state = 1
     
             elif self.state == 1:
+
+                if not self.go.value:
+                    self.mot.disable()
+                    self.done.value = True
+                    self.state = 0
+                    yield self.state
+                    continue
+
+
                 i = self.collect*4
                 now = ticks_us()
                 self.enc.update()
@@ -90,23 +97,31 @@ class TaskMotor:
                     active_omega_sp = self.test_omega_sp
 
                 voltage = self.controller.run(active_omega_sp, velocity, self.test_kp, self.test_ki, dt)
+
                 duty = 100 *voltage/self.V_bat
                 self.mot.set_effort(duty)
 
-
-                self.data[i] = ticks_diff(ticks_us(), self.trial_start) / 1_000_000
-                self.data[i + 1] = self.test_omega_sp
-                self.data[i + 2] = velocity
-                self.data[i + 3] = voltage
-
-                self.collect += 1
-    
-                if ticks_diff(now, self.trial_start) >= self.duration * 1_000_000:
-                    self.mot.disable()
-                    self.go.value = False
-                    self.done.value = True
-                    self.state = 2 
-
+                if not self.line_go.value:
+                    if self.collect < N_SAMPLES:
+                        i = self.collect * 4
+                
+                        self.data[i] = ticks_diff(
+                            ticks_us(), self.trial_start
+                        ) / 1_000_000
+                        self.data[i + 1] = active_omega_sp
+                        self.data[i + 2] = velocity
+                        self.data[i + 3] = voltage
+                
+                        self.collect += 1
+                
+                    # End only after the fixed-size data buffer is full.
+                    if self.collect >= N_SAMPLES:
+                        self.mot.disable()
+                        self.go.value = False
+                        self.done.value = True
+                        self.state = 2
+                            
+            
             elif self.state == 2:
                 if not self.go.value:
                     self.state = 0

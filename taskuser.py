@@ -13,8 +13,9 @@ help_menu =  (
     "| i/I | Enter the integral gain Ki [V/rad]                                     |",
     "| l/L | Run closed-loop repsonse on left motor and print results               |",
     "| r/R | Run closed-loop response on right motor and print results              |", 
-    "| a/A | Print one reading from each line sensor                                |",
     "| g/G | Run both motors                                                        |",
+    "| f/F | Line following enabled                                                 |",
+    "| c/C | Line following gain (k line) [(rad/s)/mm]                              |",
     "| e/E | Exit program                                                           |",
     "+-----+------------------------------------------------------------------------+",
 )
@@ -38,11 +39,13 @@ S6_OMEGA_INPUT = 6
 S7_KP = 7
 S8_KI = 8
 S9_BOTH_MOT = 9
+S10_LINE_FOLLOW = 10
+S11_LINE_KP = 11
 
 
 
 class TaskUser:
-    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, omega_sp, kp, ki, motor_period_ms, user_period_ms, V_bat):
+    def __init__(self, l_go, r_go, l_done, r_done, l_data, r_data, vcp, left_omega_sp, right_omega_sp, base_speed, line_kp, line_go, kp, ki, motor_period_ms, user_period_ms, V_bat):
 
         self.l_go = l_go
         self.r_go = r_go
@@ -50,10 +53,16 @@ class TaskUser:
         self.r_done = r_done
         self.l_data = l_data
         self.r_data = r_data
-        self.omega_sp = omega_sp
         self.kp = kp
         self.ki = ki
         self.input_gen = None
+
+        self.left_omega_sp = left_omega_sp
+        self.right_omega_sp = right_omega_sp
+        self.line_kp = line_kp
+        self.line_go = line_go
+        self.base_speed = base_speed
+
 
         self.motor_period_ms = motor_period_ms
         self.user_period_ms = user_period_ms
@@ -156,7 +165,7 @@ class TaskUser:
 
                     elif char_in in {"V", 'v'}:
                         print("Enter Velocity as Omega [rad/s]:")
-
+                        
                         state = 6
 
                     elif char_in in {"P", "p"}:
@@ -176,7 +185,7 @@ class TaskUser:
                         self.active_done = self.l_done
                         self.active_mot = "left"
                     
-                        self.active_omega_sp = self.omega_sp.value
+                        self.active_omega_sp = self.left_omega_sp.value
                         self.active_kp = self.kp.value
                         self.active_ki = self.ki.value
                     
@@ -192,7 +201,7 @@ class TaskUser:
                         self.active_done = self.r_done
                         self.active_mot = "right"
 
-                        self.active_omega_sp = self.omega_sp.value
+                        self.active_omega_sp = self.right_omega_sp.value
                         self.active_kp = self.kp.value
                         self.active_ki = self.ki.value
 
@@ -201,34 +210,23 @@ class TaskUser:
                         self.r_go.value = True
                         state = 4
 
-                    elif char_in in {"A", "a"}:
-                        readings = self.line_sensor.read()
-
-                        print("line-sensor readings:")
-                        for index, value in enumerate(readings):
-                            print(f"OUT{index + 1}: {value}")
-
                     elif char_in in {"G","g"}:
                         print("Both motors start")
-                        
-                        self.active_data = self.r_data
-                        self.active_done = self.r_done
-                        self.active_mot = "right"
-
-                        self.active_omega_sp = self.omega_sp.value
-                        self.active_kp = self.kp.value
-                        self.active_ki = self.ki.value
-
-                        self.active_data = self.l_data
-                        self.active_done = self.l_done
-                        self.active_mot = "left"
-
-                        self.header = False
-                        self.row = 0
+                     
                         self.r_go.value = True
                         self.l_go.value = True
 
                         state = 9
+
+                    elif char_in in {"F", "f"}:
+                        print("line following enabled")
+                        self.line_go.value = True
+
+                        state = 10
+
+                    elif char_in in {"C", "c"}:
+                        print("enter line following gain [(rad/s)/mm]:")
+                        state = 11
 
                     elif char_in in {"E", "e"}:
                         self.exit_program()
@@ -246,7 +244,8 @@ class TaskUser:
 
                 if self.vcp.any():
                     char_in = self.vcp.read(1).decode()
-
+                    
+                    
                     if char_in in{"E", "e"}:
                         self.exit_program(active_test=True)
               
@@ -281,7 +280,6 @@ class TaskUser:
                         control_structure = "PI"
 
 
-                    duration = 100
 
                     
                     print("# STARTING CLOSED-LOOP RESPONSE")
@@ -292,7 +290,6 @@ class TaskUser:
                     print(f"# Ki [V/rad]: {self.active_ki}")
                     print(f"# Motor task period [ms]: {self.motor_period_ms} ")
                     print(f"# User task period [ms]: {self.user_period_ms}")
-                    print(f"# Duration [s]: {duration}")
                     print(f"# Battery voltage refrence [V]: {self.V_bat}")
                     print(f"# Voltage limits [V]: {-self.V_bat}, {self.V_bat}")
                     print("# Units: time = s, setpoint = rad/s, velocity = rad/s, voltage = V")
@@ -322,33 +319,38 @@ class TaskUser:
                         break
 
 
-            elif state == 6:        
+            elif state == 6:
                 if self.input_gen is None:
-                    self.input_gen = self.get_float_input(limit = OMEGA_LIMIT)
+                    self.input_gen = self.get_float_input(limit=OMEGA_LIMIT)
+            
                 try:
                     next(self.input_gen)
-
+            
                 except StopIteration as result:
                     value = result.value
                     self.input_gen = None
-
+            
                     if value == "EXIT":
                         self.exit_program()
-
+            
                     elif value is not None:
-                        self.omega_sp.value = value
-                        print(f"Omega set to {value} rad/s")
-                        voltage = self.kp.value*self.omega_sp.value + self.ki.value*self.omega_sp.value*self.motor_period_ms/1_000
-
+                        # Nominal line-following speed and equal speeds
+                        # for manual left/right motor tests.
+                        self.base_speed.value = value
+                        self.left_omega_sp.value = value
+                        self.right_omega_sp.value = value
+            
+                        print("Omega set to {} rad/s".format(value))
+            
+                        voltage = self.kp.value * value
+            
                         if voltage > self.V_bat:
-                            print("Motor voltage too high, saturating to max value")
+                            print("Motor voltage may saturate high")
                         elif voltage < -self.V_bat:
-                            print("Motor voltage too low, saturation to min value")
-
-
-
+                            print("Motor voltage may saturate low")
+            
                     state = 1
-                
+                            
 
             elif state == 7:
                 if self.input_gen is None:
@@ -403,9 +405,39 @@ class TaskUser:
                         self.exit_program(active_test=True)
                               
                 if self.l_done.value and self.r_done.value:
-                    self.l_done.value = False
-                    self.r_done.value = False
-                    state = 5
+                   self.l_done.value = False
+                   self.r_done.value = False
+                   print("# BOTH_MOTOR_TEST_COMPLETE")
+                   state = 1
+
+            elif state == 10:
+
+                if self.vcp.any():
+                    char_in = self.vcp.read(1).decode()
+
+                    if char_in in{"E", "e"}:
+                        self.exit_program(active_test=True)
+
+            elif state == S11_LINE_KP:
+                if self.input_gen is None:
+                    self.input_gen = self.get_float_input(limit=1.0, signed=False)
+            
+                try:
+                    next(self.input_gen)
+            
+                except StopIteration as result:
+                    value = result.value
+                    self.input_gen = None
+            
+                    if value == "EXIT":
+                        self.exit_program()
+            
+                    elif value is not None:
+                        self.line_kp.value = value
+                        print("Line gain set to {}".format(value))
+            
+                    state = 1
+                            
                     
 
             yield state
