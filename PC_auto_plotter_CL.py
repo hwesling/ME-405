@@ -16,16 +16,16 @@ BAUDRATE = 115_200
 SERIAL_TIMEOUT = 0.25
 
 # Sequence runs without additional user input after the script starts.
-# Each tuple is: motor name, velocity setpoint [ticks/s], Kp [V/(ticks/s)], Ki [V/tick]
+# Each tuple is: motor name, velocity setpoint [rad/s], Kp [V/(rad/s)], Ki [V/rad]
 PRETEST = (
-    ("left", 5000.0, 0.001, 0.0),
-    ("right", 5000.0, 0.001, 0.0),
+    ("left", 20.0, 0.05, 0.0),
+    ("right", 20.0, 0.05, 0.0),
 )
 CONTROL_STRUCTURE = "PI"
 NUMERIC_LINE_ENDING = "\r\n"
 
-# Single-character commands used by the firmware menu.
-SETPOINT_COMMAND = "o"
+# Single-character commands used by the current firmware menu.
+SETPOINT_COMMAND = "s"
 KP_COMMAND = "p"
 KI_COMMAND = "i"
 LEFT_COMMAND = "l"
@@ -37,16 +37,16 @@ END_MARKER = "CLOSED-LOOP RESPONSE COMPLETE"
 ABORT_MARKER = "CLOSED-LOOP RESPONSE ABORTED"
 FAIL_MARKER = "CLOSED-LOOP RESPONSE FAILED"
 
-# Data rows:
-HEADERS = ["Time [us]",
-           "Setpoint [ticks/s]",
-           "Measured Velocity [ticks/s]",
+# Data rows printed by TaskUser:
+HEADERS = ["Time [s]",
+           "Setpoint [rad/s]",
+           "Measured Velocity [rad/s]",
            "Voltage Command [V]"]
 
 # Plot labels used for the saved deliverable figures.
 TIME_LABEL = "Time [s]"
-SETPOINT_LABEL = "Setpoint [ticks/s]"
-VELOCITY_LABEL = "Measured Velocity [ticks/s]"
+SETPOINT_LABEL = "Setpoint [rad/s]"
+VELOCITY_LABEL = "Measured Velocity [rad/s]"
 VOLTAGE_LABEL = "Voltage Command [V]"
 
 # Stop waiting and report an error instead of hanging forever if the firmware
@@ -149,17 +149,17 @@ def send_numeric_setting(ser, command, value, prompt_text, ack_text):
 
 def configure_test(ser, setpoint, Kp, Ki):
     """Send the closed-loop setpoint and gain values to the firmware."""
-    print(f"Setting velocity setpoint to {setpoint} ticks/s")
+    print(f"Setting velocity setpoint to {setpoint} rad/s")
     send_numeric_setting(ser, SETPOINT_COMMAND, setpoint,
                          "Enter Velocity Setpoint",
                          "Velocity setpoint set to")
 
-    print(f"Setting Kp to {Kp} V/(ticks/s)")
+    print(f"Setting Kp to {Kp} V/(rad/s)")
     send_numeric_setting(ser, KP_COMMAND, Kp,
                          "Enter Proportional Gain",
                          "Proportional Gain Kp set to")
 
-    print(f"Setting Ki to {Ki} V/tick")
+    print(f"Setting Ki to {Ki} V/rad")
     send_numeric_setting(ser, KI_COMMAND, Ki,
                          "Enter Integral Gain",
                          "Integral Gain Ki set to")
@@ -260,11 +260,11 @@ def save_csv(filename, header_lines, headers, columns, motor_name, setpoint,
         csv_file.write(f"# timestamp,{run_timestamp}\n")
         csv_file.write(f"# motor,{motor_name}\n")
         csv_file.write(f"# control_structure,{CONTROL_STRUCTURE}\n")
-        csv_file.write(f"# setpoint_ticks_per_second,{setpoint}\n")
-        csv_file.write(f"# Kp_V_per_ticks_per_second,{Kp}\n")
-        csv_file.write(f"# Ki_V_per_tick,{Ki}\n")
+        csv_file.write(f"# setpoint_rad_per_second,{setpoint}\n")
+        csv_file.write(f"# Kp_V_per_rad_per_second,{Kp}\n")
+        csv_file.write(f"# Ki_V_per_rad,{Ki}\n")
         csv_file.write(f"# completion_status,{completion_status}\n")
-        csv_file.write("# units,microseconds,ticks_per_second,ticks_per_second,volts\n")
+        csv_file.write("# units,seconds,rad_per_second,rad_per_second,volts\n")
         csv_file.write("# firmware_header_begin\n")
         for line in header_lines:
             csv_file.write(f"# {line}\n")
@@ -281,9 +281,7 @@ def save_csv(filename, header_lines, headers, columns, motor_name, setpoint,
 
 def save_plot(filename, headers, columns, motor_name, setpoint, Kp, Ki):
     """Plot setpoint, measured velocity, and limited voltage command."""
-    time_seconds = []
-    for time_us in columns[0]:
-        time_seconds.append(time_us / 1_000_000)
+    time_seconds = columns[0]
 
     figure, axes = pyplot.subplots(2, 1, figsize=(7.2, 6.0), sharex=True)
     velocity_axes = axes[0]
@@ -297,7 +295,7 @@ def save_plot(filename, headers, columns, motor_name, setpoint, Kp, Ki):
                       color="tab:orange", linewidth=1.5)
 
     figure.suptitle(f"{motor_name.title()} Motor Closed-Loop Response\n"
-                    f"{CONTROL_STRUCTURE}, setpoint = {setpoint} ticks/s, "
+                    f"{CONTROL_STRUCTURE}, setpoint = {setpoint} rad/s, "
                     f"Kp = {Kp}, Ki = {Ki}, motor period = 10 ms")
 
     velocity_axes.set_ylabel(VELOCITY_LABEL)

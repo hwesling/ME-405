@@ -55,7 +55,7 @@ class Encoder:
            value of delta as determined within the update() method'''
         if self.dt == 0:
             return 0
-        return self.delta/self.dt
+        return self.delta/self.dt     # Units of ticks/s
     
     def zero(self):
         '''Sets the present encoder position to zero and causes future updates
