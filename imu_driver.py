@@ -22,7 +22,7 @@ class BNO055:
     AXIS_MAP_CONFIG = const(0x24)
     AXIS_MAP_SIGN = const(0x00)
 
-    HEADING_SIGN = const(1)
+    HEADING_SIGN = const(-1)
     YAW_RATE_SIGN = const(1)
 
     CALIBRATION_START = const(0x55)
@@ -116,8 +116,8 @@ class BNO055:
 
         self.write(BNO055.reg.PAGE_ID[0], 0x00)
         self.write(BNO055.reg.UNIT_SEL[0], BNO055.UNITS)
-        self.write(BNO055.reg.AXIS_MAP_CONFIG[0], BNO055.AXIS_MAP_CONFIG)
-        self.write(BNO055.reg.AXIS_MAP_SIGN[0], BNO055.AXIS_MAP_SIGN)
+        self.write(BNO055.reg.AXIS_MAP_CONFIG_REG[0], BNO055.AXIS_MAP_CONFIG)
+        self.write(BNO055.reg.AXIS_MAP_SIGN_REG[0], BNO055.AXIS_MAP_SIGN)
 
         self.set_mode(BNO055.IMUPLUS_MODE)
 
@@ -171,11 +171,11 @@ class BNO055:
             self.write(BNO055.reg.PAGE_ID[0], 0x00)
             self.write(BNO055.reg.UNIT_SEL[0], BNO055.UNITS)
             self.write(
-                BNO055.reg.AXIS_MAP_CONFIG[0],
+                BNO055.reg.AXIS_MAP_CONFIG_REG[0],
                 BNO055.AXIS_MAP_CONFIG
             )
             self.write(
-                BNO055.reg.AXIS_MAP_SIGN[0],
+                BNO055.reg.AXIS_MAP_SIGN_REG[0],
                 BNO055.AXIS_MAP_SIGN
             )
 

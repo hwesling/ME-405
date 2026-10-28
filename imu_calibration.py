@@ -1,4 +1,5 @@
 import json
+from pyb import delay
 
 
 def validate_calibration(calibration, mode, units, axis_map_config, axis_map_sign):
@@ -52,3 +53,60 @@ def load_calibration(filename, mode, units, axis_map_config, axis_map_sign):
     )
 
     return calibration
+
+
+def calibrate_imu(imu, filename, mode, units, axis_map_config, axis_map_sign):
+    """Guide a fresh BNO055 IMUPLUS calibration before scheduling."""
+
+    print("Keep Romi still for gyro calibration.")
+    input("Place Romi level and still, then press Enter: ")
+    delay(3000)
+
+    for orientation in (
+        "+X up", "-X up", "+Y up", "-Y up", "+Z up", "-Z up"
+    ):
+        input("Place the IMU with " + orientation + ", then press Enter: ")
+        delay(2500)
+
+    print("Waiting for gyro and accelerometer calibration to reach 3.")
+
+    last_status = None
+
+    while True:
+        system, gyro, accel, mag = imu.calibration_status()
+        status = (system, gyro, accel, mag)
+
+        if status != last_status:
+            print(
+                "IMU calibration - system: {}, gyro: {}, accel: {}, mag: {}".format(
+                    system,
+                    gyro,
+                    accel,
+                    mag
+                )
+            )
+
+            last_status = status
+
+        if gyro == 3 and accel == 3:
+            calibration = {
+                "mode": mode,
+                "units": units,
+                "axis_map_config": axis_map_config,
+                "axis_map_sign": axis_map_sign,
+                "profile": imu.read_calibration_profile(),
+            }
+
+            save_calibration(
+                filename,
+                calibration,
+                mode,
+                units,
+                axis_map_config,
+                axis_map_sign
+            )
+
+            print("IMU calibration saved.")
+            return
+
+        delay(250)
