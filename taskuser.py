@@ -29,6 +29,8 @@ gain_menu = (
     "| c/C | Line Following gain (k line) [(rad/s)/mm]                              |",
     "| p/P | Enter the proportional gain Kp [V/(rad/s)]                             |",
     "| i/I | Enter the integral gain Ki [V/rad]                                     |",
+    "| h/H | Print help menu                                                        |",
+    "| e/E | Exit program                                                           |",    
     "+-----+------------------------------------------------------------------------+",
 )
 
@@ -253,7 +255,7 @@ class TaskUser:
                         self.header = False
                         self.row = 0
                         self.l_go.value = True
-                        self.l_go.done = False                 ## deals with the stale l_done 
+                        self.l_done.value = False                 ## deals with the stale l_done 
                         state = 3
                     
                     elif char_in in {"R", "r"}:
@@ -314,35 +316,35 @@ class TaskUser:
             elif state == 15:
 
                 if self.gain_idx < len(gain_menu):           ## add gain menue
-                    print(gain_menu[self.help_idx])
+                    print(gain_menu[self.gain_idx])
                     self.gain_idx +=1
 
                 elif self.vcp.any():
                     char_in = self.vcp.read(1).decode()
 
 
-                elif char_in in {"P", "p"}:
-                    print("Enter Proportional Gain Kp [V/(rad/s)]:")
-                    state = 7
-
-                elif char_in in {"I", "i"}:
-                    print("Enter Integral Gain Ki [V/rad]:")
-                    state = 8
-                
-                
-                elif char_in in {"C", "c"}:
-                    print("enter line following gain [(rad/s)/mm]:")
-                    state = 11
-
-                elif char_in in {"H", "h"}:
-                    self.help_idx = 0
-                    state = 2
-
-                elif char_in in {"k", "K"}:
-                    self.gain_idx = 0
-
-                elif char_in in {"E", "e"}:
-                    self.exit_program()
+                    if char_in in {"P", "p"}:
+                        print("Enter Proportional Gain Kp [V/(rad/s)]:")
+                        state = 7
+    
+                    elif char_in in {"I", "i"}:
+                        print("Enter Integral Gain Ki [V/rad]:")
+                        state = 8
+                    
+                    
+                    elif char_in in {"C", "c"}:
+                        print("enter line following gain [(rad/s)/mm]:")
+                        state = 11
+    
+                    elif char_in in {"H", "h"}:
+                        self.help_idx = 0
+                        state = 2
+    
+                    elif char_in in {"k", "K"}:
+                        self.gain_idx = 0
+    
+                    elif char_in in {"E", "e"}:
+                        self.exit_program()
 
   
             elif state == 2:
@@ -529,9 +531,9 @@ class TaskUser:
                     if char_in in {"E", "e"}:
                         self.exit_program(active_test=True)
                                                                           ## deleted previous consideratin of m as it isnored at first then ran later, now m is ignored as other characters
-                    if not self.line_go.value:
-                        state = 1
-            
+                elif not self.line_go.value:
+                    state = 1
+        
             elif state == 11:
                 if self.input_gen is None:
                     self.input_gen = self.get_float_input(limit=1.0, signed=False)
@@ -604,14 +606,14 @@ class TaskUser:
             elif state == 14:
                 if self.vcp.any():                                 ## adds e safe exit to manueaver
                     char_in = self.vcp.read(1)                     ## .read compares bytes and avoids decode() errors
-                    if char_in in {"E", "e"}:
+                    if char_in in (b"E", b"e"):
                         self.exit_program(active_test=True)
 
 
                 if self.man_done.value:
                     self.man_go.value = False
                     self.line_go.value = False
-                    self.man_done = False             ## fixes linefollow so it can run after manueaver
+                    self.man_done.value = False             ## fixes linefollow so it can run after manueaver
                     print("line change ended")
 
                     

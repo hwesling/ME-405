@@ -45,7 +45,7 @@ class TaskLineC:
         self.timeout_s = 4
 
         self.change_time = 0
-        self.back_timeout_s = 5.0
+        self.back_timeout_s = 20
 
         self.wheel_radius = 0.035
         self.counts_per_rev = 1440
@@ -245,7 +245,7 @@ class TaskLineC:
                 if not self.man_go.value or not self.line_go.value:
                     self.finish_maneuver("Lane-change maneuver cancelled")
                 elif (ticks_diff(now, self.change_time) /              ## if change times out safe exit
-                        1_000_000 > self.cack_timeout_s):
+                        1_000_000 > self.back_timeout_s):
                     self.finish_maneuver("Target line missed")
                 else:
                     self.update_lateral_displacement(now)
