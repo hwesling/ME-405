@@ -38,12 +38,14 @@ class TaskLineC:
 
         # Lane-change settings. +1 is left; use -1 for a right lane change.
         self.d = 0.20
-        self.turn_sign = 1
+        self.turn_sign = -1
         self.depart_after_s = 1.5
         self.yaw_rate_sp = 1
         self.yaw_kp = .3
         self.timeout_s = 4
-        #####################################################################
+
+        self.change_time = 0
+        self.back_timeout_s = 20
 
         self.wheel_radius = 0.035
         self.counts_per_rev = 1440
@@ -223,14 +225,15 @@ class TaskLineC:
                 now = ticks_us()
                 if not self.man_go.value or not self.line_go.value:
                     self.finish_maneuver("Lane-change maneuver cancelled")
-                elif (ticks_diff(now, self.maneuver_start_time) /
-                        1_000_000 > self.timeout_s):
-                    self.finish_maneuver("Lane-change timeout")
+             ##   elif (ticks_diff(now, self.maneuver_start_time) /
+             ##           1_000_000 > self.timeout_s):
+             ##       self.finish_maneuver("Lane-change timeout")
                 else:
                     self.update_lateral_displacement(now)
                     self.run_yaw_controller(self.turn_sign * self.yaw_rate_sp)
 
                     if self.turn_sign * self.lateral_displacement >= self.d/2:
+                        self.change_time = now
                         self.state = S4_TURN_BACK
                         print("d = {:.3f} m; turn back".format(
                             self.lateral_displacement
@@ -241,9 +244,9 @@ class TaskLineC:
                 now = ticks_us()
                 if not self.man_go.value or not self.line_go.value:
                     self.finish_maneuver("Lane-change maneuver cancelled")
-                #elif (ticks_diff(now, self.maneuver_start_time) /
-                #        1_000_000 > self.timeout_s):
-                #    self.finish_maneuver("Target line missed")
+                elif (ticks_diff(now, self.change_time) /              ## if change times out safe exit
+                        1_000_000 > self.back_timeout_s):
+                    self.finish_maneuver("Target line missed")
                 else:
                     self.update_lateral_displacement(now)
                     self.run_yaw_controller(-self.turn_sign * self.yaw_rate_sp)
@@ -282,7 +285,6 @@ class TaskLineC:
                         self.finish_maneuver("Line calibration invalid")
 
                     elif all(weight >= self.black_weight_min for weight in weights):
-                        print('bingus2')
                         self.finish_maneuver("Stop bar detected")
 
                     elif sum(weights) < self.lost_line_sum:

@@ -10,20 +10,29 @@ help_menu =  (
     "| Special Credit to Maddox Wintzer for Introducing 'Bingus Testing'            |",
     "+-----+------------------------------------------------------------------------+",
     "| h/H | Print help menu                                                        |",
+    "| k/K | Gain menue                                                             |",
     "| v/V | Enter the desired angular velocity [rad/s]                             |",
-    "| p/P | Enter the proportional gain Kp [V/(rad/s)]                             |",
-    "| i/I | Enter the integral gain Ki [V/rad]                                     |",
     "| l/L | Run closed-loop repsonse on left motor and print results               |",
     "| r/R | Run closed-loop response on right motor and print results              |", 
     "| g/G | Run both motors                                                        |",
     "| f/F | Run line following program                                             |",
-    "| c/C | Line following gain (k line) [(rad/s)/mm]                              |",
     "| b/B | Calibrate line sensors(black then white)                               |",
     "| m/M | Line change manuver                                                    |",
     "| e/E | Exit program                                                           |",
     "+-----+------------------------------------------------------------------------+",
 )
 
+gain_menu = (
+    "+------------------------------------------------------------------------------+",
+    "| ME 4305 ROMI GAIN MENU                                                       |",
+    "+-----+------------------------------------------------------------------------+",
+    "| c/C | Line Following gain (k line) [(rad/s)/mm]                              |",
+    "| p/P | Enter the proportional gain Kp [V/(rad/s)]                             |",
+    "| i/I | Enter the integral gain Ki [V/rad]                                     |",
+    "| h/H | Print help menu                                                        |",
+    "| e/E | Exit program                                                           |",    
+    "+-----+------------------------------------------------------------------------+",
+)
 
 # Used for printing encoder data
 ROWS_PER_PASS = 4
@@ -48,6 +57,7 @@ S11_LINE_KP = 11
 S12_CAL_BLACK = 12
 S13_CAL_WHITE = 13
 S14_MAN = 14
+S15_PRINT_GAIN = 15
 
 
 
@@ -106,6 +116,8 @@ class TaskUser:
      
         self.vcp = vcp
         self.help_idx = 0
+        self.gain_idx = 0
+
         self.active_data = None
         self.active_done = None
         self.active_mot = None
@@ -205,6 +217,8 @@ class TaskUser:
                    if self.vcp.any():
                       self.vcp.read(1)
                 self.help_idx = 0  
+                self.gain_idx = 0
+
                 state = 2
 
             elif state == 1:
@@ -216,20 +230,16 @@ class TaskUser:
                         self.help_idx = 0
                         state = 2
 
+                    elif char_in in {"K", "k"}:
+                        self.gain_idx = 0
+                        state = 15
+
+
                     elif char_in in {"V", 'v'}:
                         print("Enter Velocity as Omega [rad/s]:")
                         
                         state = 6
 
-                    elif char_in in {"P", "p"}:
-                        print("Enter Proportional Gain Kp [V/(rad/s)]:")
-
-                        state = 7
-
-                    elif char_in in {"I", "i"}:
-                        print("Enter Integral Gain Ki [V/rad]:")
-
-                        state = 8
 
                     elif char_in in {"L", "l"}:
                         print("Left Motor Start")
@@ -245,6 +255,7 @@ class TaskUser:
                         self.header = False
                         self.row = 0
                         self.l_go.value = True
+                        self.l_done.value = False                 ## deals with the stale l_done 
                         state = 3
                     
                     elif char_in in {"R", "r"}:
@@ -261,6 +272,7 @@ class TaskUser:
                         self.header = False
                         self.row = 0
                         self.r_go.value = True
+                        self.r_done.value = False           ##
                         state = 4
 
                     elif char_in in {"G","g"}:
@@ -268,6 +280,8 @@ class TaskUser:
                      
                         self.r_go.value = True
                         self.l_go.value = True
+                        self.r_done.value = False        ##
+                        self.l_done.value = False        ##
 
                         state = 9
 
@@ -285,9 +299,6 @@ class TaskUser:
 
                         state = 14
 
-                    elif char_in in {"C", "c"}:
-                        print("enter line following gain [(rad/s)/mm]:")
-                        state = 11
 
                     elif char_in in {"B", "b"}:
                         self.line_go.value = False
@@ -302,7 +313,40 @@ class TaskUser:
                     elif char_in in {"E", "e"}:
                         self.exit_program()
 
+            elif state == 15:
 
+                if self.gain_idx < len(gain_menu):           ## add gain menue
+                    print(gain_menu[self.gain_idx])
+                    self.gain_idx +=1
+
+                elif self.vcp.any():
+                    char_in = self.vcp.read(1).decode()
+
+
+                    if char_in in {"P", "p"}:
+                        print("Enter Proportional Gain Kp [V/(rad/s)]:")
+                        state = 7
+    
+                    elif char_in in {"I", "i"}:
+                        print("Enter Integral Gain Ki [V/rad]:")
+                        state = 8
+                    
+                    
+                    elif char_in in {"C", "c"}:
+                        print("enter line following gain [(rad/s)/mm]:")
+                        state = 11
+    
+                    elif char_in in {"H", "h"}:
+                        self.help_idx = 0
+                        state = 2
+    
+                    elif char_in in {"k", "K"}:
+                        self.gain_idx = 0
+    
+                    elif char_in in {"E", "e"}:
+                        self.exit_program()
+
+  
             elif state == 2:
                 if self.help_idx < len(help_menu):
                     print(help_menu[self.help_idx])
@@ -486,14 +530,10 @@ class TaskUser:
                     char_in = self.vcp.read(1).decode()
                     if char_in in {"E", "e"}:
                         self.exit_program(active_test=True)
-                    elif char_in in {"M", "m"}:
-                        print("Line following active; lane change requested")
-                        self.man_done.value = False
-                        self.man_go.value = True
-                        state = 14
-                    if not self.line_go.value:
-                        state = 1
-            
+                                                                          ## deleted previous consideratin of m as it isnored at first then ran later, now m is ignored as other characters
+                elif not self.line_go.value:
+                    state = 1
+        
             elif state == 11:
                 if self.input_gen is None:
                     self.input_gen = self.get_float_input(limit=1.0, signed=False)
@@ -564,9 +604,16 @@ class TaskUser:
                         state = 1
 
             elif state == 14:
+                if self.vcp.any():                                 ## adds e safe exit to manueaver
+                    char_in = self.vcp.read(1)                     ## .read compares bytes and avoids decode() errors
+                    if char_in in (b"E", b"e"):
+                        self.exit_program(active_test=True)
+
+
                 if self.man_done.value:
                     self.man_go.value = False
                     self.line_go.value = False
+                    self.man_done.value = False             ## fixes linefollow so it can run after manueaver
                     print("line change ended")
 
                     

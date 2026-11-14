@@ -46,6 +46,7 @@ class TaskMotor:
         self.test_ki = 0
 
 
+
     def run(self):
 
         while True: 
@@ -69,7 +70,6 @@ class TaskMotor:
         
                     self.mot.enable()
                     self.state = 1
-
     
             elif self.state == 1:
 
@@ -79,6 +79,7 @@ class TaskMotor:
                     self.state = 0
                     yield self.state
                     continue
+
 
                 i = self.collect*4
                 now = ticks_us()

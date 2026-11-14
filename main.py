@@ -110,7 +110,7 @@ def startup_imu(i2c, imu):
         )
 
 
-def main():
+if __name__ == "__main__":
     # IMU configuration/calibration may block, so it happens before scheduling.
     left_mot.disable()
     right_mot.disable()
@@ -156,7 +156,3 @@ def main():
         left_mot.disable()
         right_mot.disable()
         print(cotask.task_list.profile())
-
-
-if __name__ == "__main__":
-    main()
