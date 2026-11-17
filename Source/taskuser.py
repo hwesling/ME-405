@@ -27,8 +27,8 @@ gain_menu = (
     "| ME 4305 ROMI GAIN MENU                                                       |",
     "+-----+------------------------------------------------------------------------+",
     "| c/C | Line Following gain (k line) [(rad/s)/mm]                              |",
-    "| p/P | Enter the proportional gain Kp [V/(rad/s)]                             |",
-    "| i/I | Enter the integral gain Ki [V/rad]                                     |",
+    "| p/P | Enter proportional gain Kp [V/(rad/s)]                                 |",
+    "| i/I | Enter discrete integral gain Ki_s [V/rad]                              |",
     "| h/H | Print help menu                                                        |",
     "| e/E | Exit program                                                           |",    
     "+-----+------------------------------------------------------------------------+",
@@ -121,6 +121,11 @@ class TaskUser:
         self.active_data = None
         self.active_done = None
         self.active_mot = None
+        self.active_omega_sp = 0.0
+        self.active_kp = 0.0
+        self.active_ki = 0.0
+        self.both_test = False
+        self.both_second_data_pending = False
         self.header = False
         self.row = 0
 
@@ -277,6 +282,18 @@ class TaskUser:
 
                     elif char_in in {"G","g"}:
                         print("Both motors start")
+
+                        # Print the left and right data blocks after the
+                        # simultaneous test has completed.
+                        self.active_data = self.l_data
+                        self.active_mot = "left"
+                        self.active_omega_sp = self.left_omega_sp.value
+                        self.active_kp = self.kp.value
+                        self.active_ki = self.ki.value
+                        self.header = False
+                        self.row = 0
+                        self.both_test = True
+                        self.both_second_data_pending = True
                      
                         self.r_go.value = True
                         self.l_go.value = True
@@ -384,7 +401,7 @@ class TaskUser:
 
             elif state == 5:
 
-                rows = len(self.active_data) // 4
+                rows = len(self.active_data) // 5
 
                 if not self.header:
 
@@ -414,7 +431,7 @@ class TaskUser:
                         f"|Ki| <= {KI_LIMIT} V/rad"
                     )
 
-                    print("time_s,setpoint_rad_s,measured_velocity_rad_s,voltage_command_V")
+                    print("time [s], setpoint [rad/s], encoder_velocity [rad/s], observer_velocity [rad/s], applied_voltage [V]")
 
 
                     self.header = True
@@ -422,14 +439,30 @@ class TaskUser:
 
                 for _ in range(ROWS_PER_PASS):
                     if self.row < rows:
-                        i = self.row*4
+                        i = self.row*5
                         d = self.active_data
 
-                        print("{},          {},          {},          {}".format(d[i], d[i + 1], d[i + 2], d[i + 3]))
+                        print("{},          {},          {},          {},           {}".format(d[i], d[i + 1], d[i + 2], d[i + 3], d[i + 4]))
                         self.row +=1
 
                     if self.row >= rows:
                         print("# TEST_COMPLETE")
+
+                        if self.both_second_data_pending:
+                            # Start a second ordinary response block for the
+                            # right motor on the next scheduler pass.
+                            self.active_data = self.r_data
+                            self.active_mot = "right"
+                            self.active_omega_sp = self.right_omega_sp.value
+                            self.header = False
+                            self.row = 0
+                            self.both_second_data_pending = False
+                            break
+
+                        if self.both_test:
+                            print("# BOTH_MOTOR_TEST_COMPLETE")
+                            self.both_test = False
+
                         state = 1
                         break
 
@@ -522,8 +555,7 @@ class TaskUser:
                 if self.l_done.value and self.r_done.value:
                    self.l_done.value = False
                    self.r_done.value = False
-                   print("# BOTH_MOTOR_TEST_COMPLETE")
-                   state = 1
+                   state = 5
 
             elif state == 10:
                 if self.vcp.any():

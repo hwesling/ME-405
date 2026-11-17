@@ -11,14 +11,13 @@ from taskmotor import TaskMotor, ClosedLoop
 from taskuser import TaskUser
 from taskline_c import TaskLineC
 from imu_driver import BNO055
-from imu_calibration import load_calibration as load_imu_calibration
-from imu_calibration import calibrate_imu
+from imu_calibration import load_calibration as load_imu_calibration, calibrate_imu
 
 
 class Cell:
     def __init__(self, value=None):
         self.value = value
-
+        
 
 ser = USB_VCP()
 n_samples = 101
@@ -46,6 +45,7 @@ V_bat = 7.2
 motor_period_ms = 50
 user_period_ms = 0
 line_period_ms = 30
+Ts = motor_period_ms / 1000
 
 left_controller = ClosedLoop(-V_bat, V_bat)
 right_controller = ClosedLoop(-V_bat, V_bat)
@@ -53,8 +53,9 @@ right_controller = ClosedLoop(-V_bat, V_bat)
 left_omega_sp = Cell(0.0)
 right_omega_sp = Cell(0.0)
 base_speed = Cell(5.0)
-kp = Cell(0.3)
-ki = Cell(0.5)
+kp = Cell(0.2)                           # Observer feedback + discrete PI Kp = 0.5, Ki_s = 0.04
+ki_c = Cell(0.8)                         # Unstable at 2 rad/s: motor jitter and serial disconnect
+ki = Cell(ki_c.value*Ts)                 # DISCRETE KI VALUE -> Ki_s = Ki_c*Ts = (.8)(.05) = .04
 line_kp = Cell(0.5)
 
 line_go = Cell(False)
@@ -67,8 +68,8 @@ r_done = Cell(False)
 man_go = Cell(False)
 man_done = Cell(False)
 
-l_data = array('f', [0] * (n_samples * 4))
-r_data = array('f', [0] * (n_samples * 4))
+l_data = array('f', [0] * (n_samples * 5))
+r_data = array('f', [0] * (n_samples * 5))
 calibration = Cell(None)
 
 left_mot_task = TaskMotor(
@@ -110,7 +111,9 @@ def startup_imu(i2c, imu):
         )
 
 
+
 if __name__ == "__main__":
+
     # IMU configuration/calibration may block, so it happens before scheduling.
     left_mot.disable()
     right_mot.disable()
