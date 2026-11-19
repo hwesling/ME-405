@@ -130,7 +130,7 @@ class TaskMotor:
                 # 1. Read CURRENT observer estimate before updating it.
                 self.omega_hat = self.x_hat[0]
                 
-                # 2. Existing controller still uses the ORIGINAL feedback for Step 3.
+                # 2. Controller uses the observer velocity feedback.
                 voltage = self.controller.run(active_omega_sp, self.omega_hat, self.test_kp, self.test_ki, dt)
                 
                 # 3. Convert command to duty and explicitly enforce driver limits.
